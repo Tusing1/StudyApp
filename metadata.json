@@ -1,0 +1,6 @@
+{
+  "name": "StudyGram",
+  "description": "Interactive revision discussions, MCQs, and AI Nursing Buddy for Nurses Revision Uganda.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
