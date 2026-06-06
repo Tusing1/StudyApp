@@ -1,0 +1,34 @@
+package com.example
+
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.Modifier
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.ui.StudygramViewModel
+import com.example.ui.screens.StudygramAppContent
+import com.example.ui.theme.MyApplicationTheme
+
+import com.example.data.DatabaseProvider
+import com.shepeliev.webrtckmp.WebRtc
+
+class MainActivity : ComponentActivity() {
+  override fun onCreate(savedInstanceState: Bundle?) {
+    super.onCreate(savedInstanceState)
+    DatabaseProvider.init(applicationContext)
+    WebRtc.initialize(applicationContext)
+    enableEdgeToEdge()
+    setContent {
+      MyApplicationTheme {
+        val viewModel: StudygramViewModel = viewModel()
+        StudygramAppContent(
+          viewModel = viewModel,
+          modifier = Modifier.fillMaxSize()
+        )
+      }
+    }
+  }
+}
+
