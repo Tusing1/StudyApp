@@ -19,8 +19,9 @@ import com.example.ui.StudygramViewModel
 fun PdfViewerScreen(viewModel: StudygramViewModel, url: String) {
     Scaffold(
         topBar = {
+            val fileName = url.substringAfterLast("/").substringBefore("?")
             TopAppBar(
-                title = { Text("Study Material.pdf", fontWeight = FontWeight.Bold, maxLines = 1) },
+                title = { Text(fileName, fontWeight = FontWeight.Bold, maxLines = 1) },
                 navigationIcon = {
                     IconButton(onClick = { viewModel.goBack() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -54,10 +55,16 @@ fun PdfViewerScreen(viewModel: StudygramViewModel, url: String) {
                     modifier = Modifier.padding(24.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Text("Chapter 4: Cellular Respiration", style = MaterialTheme.typography.headlineMedium, color = Color.Black)
+                    Text("PDF Viewer Preview", style = MaterialTheme.typography.headlineMedium, color = Color.Black)
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(
-                        "Cellular respiration is a set of metabolic reactions and processes that take place in the cells of organisms to convert chemical energy from oxygen molecules or nutrients into adenosine triphosphate (ATP), and then release waste products.",
+                        "Currently viewing: $url",
+                        color = Color.DarkGray,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        "Note: A fully functional cross-platform PDF renderer requires native expect/actual WebView bindings which are not implemented in this mockup overlay. This serves as the UI wireframe for Phase 12.",
                         color = Color.Black
                     )
                     // Mock lines for text

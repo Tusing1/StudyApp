@@ -9,7 +9,8 @@ data class UserProfile(
     val username: String,
     val nursingField: String, // e.g., "General Nursing", "Midwifery", "Pediatrics", "Education"
     val avatarColor: Int, // Hex value of user avatar color
-    val registeredAt: Long = System.currentTimeMillis()
+    val registeredAt: Long = System.currentTimeMillis(),
+    val studyTokens: Int = 0
 )
 
 @Entity(tableName = "discussion_messages")

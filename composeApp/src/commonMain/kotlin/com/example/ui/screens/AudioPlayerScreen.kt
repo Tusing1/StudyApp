@@ -25,8 +25,9 @@ fun AudioPlayerScreen(viewModel: StudygramViewModel, url: String) {
 
     Scaffold(
         topBar = {
+            val fileName = url.substringAfterLast("/").substringBefore("?")
             TopAppBar(
-                title = { Text("Audio Note", fontWeight = FontWeight.Bold) },
+                title = { Text(fileName, fontWeight = FontWeight.Bold, maxLines = 1) },
                 navigationIcon = {
                     IconButton(onClick = { viewModel.goBack() }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -46,11 +47,19 @@ fun AudioPlayerScreen(viewModel: StudygramViewModel, url: String) {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 modifier = Modifier
-                    .fillMaxWidth(0.8f)
+                    .fillMaxWidth(0.9f)
                     .padding(24.dp)
                     .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(24.dp))
                     .padding(32.dp)
             ) {
+                Text(
+                    text = "Now Playing: $url",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                    maxLines = 1
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+
                 // Mock Waveform
                 Row(
                     modifier = Modifier.fillMaxWidth().height(60.dp),

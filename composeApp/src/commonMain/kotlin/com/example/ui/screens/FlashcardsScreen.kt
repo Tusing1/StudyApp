@@ -37,6 +37,9 @@ fun FlashcardsScreen(viewModel: StudygramViewModel) {
 
     var currentIndex by remember { mutableStateOf(0) }
     var isFlipped by remember { mutableStateOf(false) }
+    
+    val userProfile by viewModel.userProfile.collectAsState()
+    val studyTokens = userProfile?.studyTokens ?: 0
 
     Scaffold(
         topBar = {
@@ -58,7 +61,7 @@ fun FlashcardsScreen(viewModel: StudygramViewModel) {
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
                         ) {
-                            Text("🪙 450", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSecondaryContainer)
+                            Text("🪙 $studyTokens", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSecondaryContainer)
                         }
                     }
                 },
@@ -153,8 +156,11 @@ fun FlashcardsScreen(viewModel: StudygramViewModel) {
                     Spacer(modifier = Modifier.height(8.dp))
                     Text("+50 Coins Earned", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.primary)
                     Spacer(modifier = Modifier.height(24.dp))
-                    Button(onClick = { currentIndex = 0 }) {
-                        Text("Study Again")
+                    Button(onClick = { 
+                        currentIndex = 0
+                        viewModel.addStudyTokens(50)
+                    }) {
+                        Text("Claim Tokens & Study Again")
                     }
                 }
             }

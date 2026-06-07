@@ -2,6 +2,7 @@ plugins {
   alias(libs.plugins.kotlinMultiplatform)
   alias(libs.plugins.android.application)
   alias(libs.plugins.composeMultiplatform)
+  alias(libs.plugins.kotlin.compose)
   alias(libs.plugins.kotlinxSerializationPlugin)
   alias(libs.plugins.google.devtools.ksp)
   alias(libs.plugins.secrets)
@@ -9,10 +10,8 @@ plugins {
 
 kotlin {
   androidTarget {
-    compilations.all {
-      kotlinOptions {
-        jvmTarget = "11"
-      }
+    compilerOptions {
+      jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11)
     }
   }
 
@@ -61,6 +60,7 @@ kotlin {
       implementation(libs.supabase.postgrest)
       implementation(libs.supabase.realtime)
       implementation(libs.supabase.storage)
+      implementation(libs.supabase.functions)
       implementation(libs.webrtc.kmp)
     }
     iosMain.dependencies {

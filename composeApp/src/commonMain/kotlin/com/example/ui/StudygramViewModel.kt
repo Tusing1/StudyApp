@@ -30,12 +30,13 @@ sealed interface AppScreen {
     object Calls : AppScreen
     object Contacts : AppScreen
     object Settings : AppScreen
+    object AIChat : AppScreen
+    object StudyLabs : AppScreen
     object Flashcards : AppScreen // Gamified Revision
     object QuizPractice : AppScreen
     data class Thread(val messageId: String) : AppScreen
     data class AudioPlayer(val url: String) : AppScreen
     data class PdfViewer(val url: String) : AppScreen
-    object AIChat : AppScreen
     object Bookmarks : AppScreen
 }
 
@@ -73,6 +74,28 @@ class StudygramViewModel : ViewModel() {
 
     // Chat and channel messages variables
     val activeChannelMessages = mutableStateListOf<SupabaseMessage>()
+    private fun createGroup(name: String, description: String, memberIds: List<String>, onSuccess: (Long) -> Unit) {
+        viewModelScope.launch {
+            val convId = repository.createGroup(name, description, memberIds)
+            if (convId != null) {
+                fetchChannels()
+                onSuccess(convId)
+            }
+        }
+    }
+
+    fun createChannel(name: String, description: String, enableDiscussion: Boolean, onSuccess: (Long) -> Unit) {
+        viewModelScope.launch {
+            val convId = repository.createChannel(name, description, enableDiscussion)
+            if (convId != null) {
+                fetchChannels()
+                onSuccess(convId)
+            }
+        }
+    }
+
+    fun archiveChannel(conversationId: Long) {
+    }
     private var activeChannelId: Long? = null
     val channels = mutableStateListOf<SupabaseConversation>()
 
@@ -92,12 +115,17 @@ class StudygramViewModel : ViewModel() {
     // Dedicated Play Chat Messages list
     val aiPlaygroundMessages = mutableStateListOf<ChatMessage>()
 
+    // Tinder Matching / Study Buddies
+    val potentialBuddies = mutableStateListOf<com.example.data.UserProfile>()
+    val matchedBuddies = mutableStateListOf<com.example.data.UserProfile>()
+
     init {
         viewModelScope.launch {
             repository.initDatabaseIfNeeded()
             checkAuthStatus()
             fetchChannels()
             listenForIncomingCalls()
+            potentialBuddies.addAll(com.example.data.DefaultData.MOCK_PEERS)
         }
     }
 
@@ -155,6 +183,24 @@ class StudygramViewModel : ViewModel() {
             val randomColor = colors.random().toInt()
             repository.saveProfile(handle, specialty, randomColor)
             currentScreen = AppScreen.Channels
+        }
+    }
+
+    // Gamification
+    fun addStudyTokens(amount: Int) {
+        viewModelScope.launch {
+            repository.addStudyTokens(amount)
+        }
+    }
+
+    // Study Buddies Matching
+    fun matchWithBuddy(buddyId: String, isMatch: Boolean) {
+        val buddy = potentialBuddies.find { it.id == buddyId }
+        if (buddy != null) {
+            potentialBuddies.remove(buddy)
+            if (isMatch) {
+                matchedBuddies.add(buddy)
+            }
         }
     }
 
@@ -351,6 +397,10 @@ class StudygramViewModel : ViewModel() {
         hasAnswered = true
         isCorrectAnswer = selectedOption == currentQuestion.correctOption
         quizExplanation = currentQuestion.explanation
+
+        if (isCorrectAnswer) {
+            addStudyTokens(10)
+        }
     }
 
     fun nextQuizQuestion() {
@@ -389,6 +439,40 @@ class StudygramViewModel : ViewModel() {
             
             val explanation = repository.askGemini(userPrompt, systemInstructions)
             aiExplanationText = explanation
+            isGeneratingAI = false
+        }
+    }
+
+    // Direct Chat with AI Tutor
+    fun sendMessageToAi(userText: String) {
+        if (aiPlaygroundMessages.isEmpty()) {
+            aiPlaygroundMessages.add(ChatMessage(
+                senderName = "AI Tutor",
+                text = "Hello! I am your Studygram AI Tutor. How can I help you today?",
+                isMe = false,
+                isAiGenerated = true
+            ))
+        }
+        
+        aiPlaygroundMessages.add(ChatMessage(
+            senderName = "Me",
+            text = userText,
+            isMe = true,
+            isAiGenerated = false
+        ))
+        
+        isGeneratingAI = true
+        
+        viewModelScope.launch {
+            val systemInstructions = "You are an AI Study Tutor for Ugandan nursing students. Be helpful and encouraging."
+            val response = repository.askGemini(userText, systemInstructions)
+            
+            aiPlaygroundMessages.add(ChatMessage(
+                senderName = "AI Tutor",
+                text = response,
+                isMe = false,
+                isAiGenerated = true
+            ))
             isGeneratingAI = false
         }
     }

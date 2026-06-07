@@ -87,13 +87,14 @@ fun StudygramAppContent(
                     userProfile = userProfile
                 )
                 is AppScreen.Calls -> CallsScreen()
-                is AppScreen.Contacts -> ContactsScreen()
+                is AppScreen.Contacts -> ContactsScreen(viewModel = viewModel)
                 is AppScreen.Settings -> SettingsScreen(viewModel = viewModel)
                 is AppScreen.Flashcards -> FlashcardsScreen(viewModel = viewModel)
                 is AppScreen.Thread -> ThreadScreen(viewModel = viewModel, messageId = activeScreen.messageId)
                 is AppScreen.AudioPlayer -> AudioPlayerScreen(viewModel = viewModel, url = activeScreen.url)
                 is AppScreen.PdfViewer -> PdfViewerScreen(viewModel = viewModel, url = activeScreen.url)
                 is AppScreen.AIChat -> AIChatScreen(viewModel = viewModel)
+                is AppScreen.StudyLabs -> StudyLabsScreen(viewModel = viewModel)
                 is AppScreen.DiscussionRoom -> RoomScreen(
                     viewModel = viewModel,
                     channel = activeScreen.channel
@@ -150,8 +151,19 @@ fun StudygramBottomNavBar(
         NavigationBarItem(
             selected = currentScreen is AppScreen.Contacts,
             onClick = { onNavigate(AppScreen.Contacts) },
-            icon = { Icon(Icons.Default.Person, contentDescription = "Contacts") },
-            label = { Text("Contacts", fontSize = 11.sp) },
+            icon = { Icon(Icons.Default.Person, contentDescription = "Buddies") },
+            label = { Text("Buddies", fontSize = 11.sp) },
+            colors = NavigationBarItemDefaults.colors(
+                selectedIconColor = MaterialTheme.colorScheme.primary,
+                indicatorColor = MaterialTheme.colorScheme.secondary.copy(alpha = 0.2f)
+            )
+        )
+
+        NavigationBarItem(
+            selected = currentScreen is AppScreen.StudyLabs,
+            onClick = { onNavigate(AppScreen.StudyLabs) },
+            icon = { Icon(Icons.Default.Star, contentDescription = "Labs") },
+            label = { Text("Labs", fontSize = 11.sp) },
             colors = NavigationBarItemDefaults.colors(
                 selectedIconColor = MaterialTheme.colorScheme.primary,
                 indicatorColor = MaterialTheme.colorScheme.secondary.copy(alpha = 0.2f)
@@ -177,7 +189,7 @@ fun StudygramBottomNavBar(
 @Composable
 fun RoomScreen(
     viewModel: StudygramViewModel,
-    channel: DiscussionChannel
+    channel: SupabaseConversation
 ) {
     val messages = viewModel.activeChannelMessages
     var inputMessage by remember { mutableStateOf("") }
@@ -215,12 +227,12 @@ fun RoomScreen(
 
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = channel.title,
+                        text = channel.title ?: "Room ${channel.id}",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "Study group · ${channel.onlineCount} peers",
+                        text = "Study group · ${channel.subscriberCount ?: 0} peers",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
                     )

@@ -13,6 +13,8 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -25,7 +27,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.data.DiscussionChannel
+import com.example.data.SupabaseConversation
 import com.example.data.SupabaseMessage
 import com.example.ui.AppScreen
 import com.example.ui.StudygramViewModel
@@ -35,7 +37,7 @@ import coil3.compose.AsyncImage
 @Composable
 fun RoomScreen(
     viewModel: StudygramViewModel,
-    channel: DiscussionChannel
+    channel: SupabaseConversation
 ) {
     val messages = viewModel.activeChannelMessages
     var inputMessage by remember { mutableStateOf("") }
@@ -47,12 +49,12 @@ fun RoomScreen(
                 title = {
                     Column(modifier = Modifier.clickable { viewModel.navigateTo(AppScreen.ChannelInfo(channel)) }) {
                         Text(
-                            text = channel.title,
+                            text = channel.title ?: "Room ${channel.id}",
                             fontSize = 18.sp,
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = "${channel.onlineCount} members",
+                            text = "${channel.subscriberCount ?: 0} members",
                             fontSize = 12.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -219,17 +221,76 @@ fun MessageBubble(
                     .widthIn(max = 280.dp)
             ) {
                 if (!message.fileUrl.isNullOrBlank()) {
-                    AsyncImage(
-                        model = message.fileUrl,
-                        contentDescription = "Attached Media",
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(180.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .padding(bottom = 8.dp)
-                            .background(Color.DarkGray) // Fallback for dummy image test
-                    )
+                    when (message.messageType) {
+                        "image" -> {
+                            AsyncImage(
+                                model = message.fileUrl,
+                                contentDescription = "Attached Image",
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(180.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .padding(bottom = 8.dp)
+                                    .background(Color.DarkGray)
+                                    .clickable { /* TODO: Image Viewer */ }
+                            )
+                        }
+                        "audio", "voice" -> {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(bottom = 8.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.2f))
+                                    .clickable { viewModel.navigateTo(AppScreen.AudioPlayer(message.fileUrl)) }
+                                    .padding(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(40.dp)
+                                        .clip(CircleShape)
+                                        .background(MaterialTheme.colorScheme.primary),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(Icons.Default.PlayArrow, contentDescription = "Play Audio", tint = MaterialTheme.colorScheme.onPrimary)
+                                }
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column {
+                                    Text("Audio Message", style = MaterialTheme.typography.bodyMedium, color = textColor, fontWeight = FontWeight.Bold)
+                                    Text("0:00", style = MaterialTheme.typography.bodySmall, color = textColor.copy(alpha = 0.7f))
+                                }
+                            }
+                        }
+                        else -> { // file, pdf, document
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(bottom = 8.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.2f))
+                                    .clickable { viewModel.navigateTo(AppScreen.PdfViewer(message.fileUrl)) }
+                                    .padding(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(40.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(MaterialTheme.colorScheme.error.copy(alpha = 0.8f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(Icons.Default.Description, contentDescription = "Document", tint = Color.White)
+                                }
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column {
+                                    Text(message.fileName ?: "Document.pdf", style = MaterialTheme.typography.bodyMedium, color = textColor, fontWeight = FontWeight.Bold, maxLines = 1)
+                                    Text(if (message.fileSize != null) "${message.fileSize / 1024} KB" else "Unknown Size", style = MaterialTheme.typography.bodySmall, color = textColor.copy(alpha = 0.7f))
+                                }
+                            }
+                        }
+                    }
                 }
 
                 if (message.content.isNotBlank()) {

@@ -154,4 +154,12 @@ object DefaultData {
             )
         }
     }
+
+    val MOCK_PEERS = listOf(
+        UserProfile(id = "p1", username = "Namuli Catherine", nursingField = "Midwifery", avatarColor = 0xFFC2185B.toInt()),
+        UserProfile(id = "p2", username = "Mugisha Paul", nursingField = "General Nursing", avatarColor = 0xFF1976D2.toInt()),
+        UserProfile(id = "p3", username = "Aisha Namuganza", nursingField = "Pediatrics", avatarColor = 0xFF7B1FA2.toInt()),
+        UserProfile(id = "p4", username = "Kiiza Simon", nursingField = "Education", avatarColor = 0xFF388E3C.toInt()),
+        UserProfile(id = "p5", username = "Nakitende Grace", nursingField = "Surgical", avatarColor = 0xFF00796B.toInt())
+    )
 }

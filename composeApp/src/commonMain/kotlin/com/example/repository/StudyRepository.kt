@@ -1,7 +1,9 @@
 package com.example.repository
 
 import com.example.api.Content
-import com.example.api.GenerateContentRequest
+import io.github.jan.supabase.postgrest.query.Columns
+import io.github.jan.supabase.functions.functions
+import kotlinx.serialization.Serializable
 import com.example.api.Part
 import com.example.api.ApiClient
 import com.example.config.GEMINI_API_KEY
@@ -11,9 +13,24 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.withContext
 
+@Serializable
+data class CreateConversationRequest(
+    val type: String,
+    val name: String? = null,
+    val description: String? = null,
+    val memberIds: List<String> = emptyList(),
+    val enableDiscussion: Boolean = false
+)
+
+@Serializable
+data class CreateConversationResponse(
+    val id: Long
+)
+
 class StudyRepository(
     private val db: AppDatabase
 ) {
+    private val supabase = com.example.data.SupabaseApi.client
     private val userProfileDao = db.userProfileDao()
     private val messageDao = db.discussionMessageDao()
     private val quizDao = db.quizQuestionDao()
@@ -29,6 +46,10 @@ class StudyRepository(
 
     suspend fun clearProfile() = withContext(Dispatchers.IO) {
         userProfileDao.deleteProfile()
+    }
+
+    suspend fun addStudyTokens(amount: Int) = withContext(Dispatchers.IO) {
+        userProfileDao.addStudyTokens(amount)
     }
 
     suspend fun initDatabaseIfNeeded() = withContext(Dispatchers.IO) {
@@ -89,6 +110,36 @@ class StudyRepository(
         bookmarkDao.insertBookmark(bookmark)
     }
 
+    suspend fun createGroup(name: String, description: String, memberIds: List<String>): Long? {
+        return try {
+            val response = supabase.functions.invoke("create-conversation", CreateConversationRequest(
+                type = "group",
+                name = name,
+                description = description,
+                memberIds = memberIds
+            ))
+            response.body<CreateConversationResponse>().id
+        } catch (e: Exception) {
+            println("Error creating group: ${e.message}")
+            null
+        }
+    }
+
+    suspend fun createChannel(name: String, description: String, enableDiscussion: Boolean): Long? {
+        return try {
+            val response = supabase.functions.invoke("create-conversation", CreateConversationRequest(
+                type = "channel",
+                name = name,
+                description = description,
+                enableDiscussion = enableDiscussion
+            ))
+            response.body<CreateConversationResponse>().id
+        } catch (e: Exception) {
+            println("Error creating channel: ${e.message}")
+            null
+        }
+    }
+
     suspend fun removeBookmark(refId: String, type: String) = withContext(Dispatchers.IO) {
         bookmarkDao.deleteBookmarkByRef(refId, type)
     }
@@ -112,7 +163,7 @@ class StudyRepository(
                 contents = listOf(Content(parts = listOf(Part(text = prompt)))),
                 systemInstruction = systemContent
             )
-            val model = "gemini-3.5-flash"
+            val model = "gemini-1.5-flash"
             val response = ApiClient.service.generateContent(model, apiKey, request)
             response.candidates?.firstOrNull()?.content?.parts?.firstOrNull()?.text 
                 ?: "No explanation generated. Try asking again."

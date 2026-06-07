@@ -19,21 +19,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.StudygramViewModel
-
-data class AIMessage(val text: String, val isUser: Boolean)
+import com.example.ui.ChatMessage
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AIChatScreen(viewModel: StudygramViewModel) {
-    val messages = remember {
-        mutableStateListOf(
-            AIMessage("Hello! I am your Studygram AI Tutor. How can I help you today?", false),
-            AIMessage("Can you explain cellular respiration?", true),
-            AIMessage("Certainly! Cellular respiration is the process by which cells derive energy from glucose. The chemical equation is C6H12O6 + 6O2 -> 6CO2 + 6H2O + ATP. It consists of three main stages: Glycolysis, the Krebs cycle, and the Electron Transport Chain.", false)
-        )
-    }
-    
+    val messages = viewModel.aiPlaygroundMessages
     var inputText by remember { mutableStateOf("") }
+    val isGenerating = viewModel.isGeneratingAI
 
     Scaffold(
         topBar = {
@@ -79,12 +72,9 @@ fun AIChatScreen(viewModel: StudygramViewModel) {
                     Spacer(modifier = Modifier.width(12.dp))
                     IconButton(
                         onClick = {
-                            if (inputText.isNotBlank()) {
-                                messages.add(AIMessage(inputText, true))
-                                val question = inputText
+                            if (inputText.isNotBlank() && !isGenerating) {
+                                viewModel.sendMessageToAi(inputText)
                                 inputText = ""
-                                // Mock AI response
-                                messages.add(AIMessage("I am an AI Tutor mockup. In Phase 10, I will be connected to a real LLM to answer: '$question'.", false))
                             }
                         },
                         modifier = Modifier
@@ -109,9 +99,9 @@ fun AIChatScreen(viewModel: StudygramViewModel) {
             items(messages) { message ->
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = if (message.isUser) Arrangement.End else Arrangement.Start
+                    horizontalArrangement = if (message.isMe) Arrangement.End else Arrangement.Start
                 ) {
-                    if (!message.isUser) {
+                    if (!message.isMe) {
                         Box(
                             modifier = Modifier
                                 .size(32.dp)
@@ -125,15 +115,44 @@ fun AIChatScreen(viewModel: StudygramViewModel) {
                     }
                     
                     Surface(
-                        color = if (message.isUser) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-                        shape = if (message.isUser) RoundedCornerShape(16.dp, 16.dp, 4.dp, 16.dp) else RoundedCornerShape(16.dp, 16.dp, 16.dp, 4.dp),
+                        color = if (message.isMe) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                        shape = if (message.isMe) RoundedCornerShape(16.dp, 16.dp, 4.dp, 16.dp) else RoundedCornerShape(16.dp, 16.dp, 16.dp, 4.dp),
                         modifier = Modifier.widthIn(max = 280.dp)
                     ) {
                         Text(
                             text = message.text,
-                            color = if (message.isUser) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = if (message.isMe) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(16.dp)
                         )
+                    }
+                }
+            }
+            if (isGenerating) {
+                item {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.Start
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFFE91E63)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("🤖", fontSize = 16.sp)
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Surface(
+                            color = MaterialTheme.colorScheme.surfaceVariant,
+                            shape = RoundedCornerShape(16.dp, 16.dp, 16.dp, 4.dp)
+                        ) {
+                            Text(
+                                text = "Typing...",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(16.dp)
+                            )
+                        }
                     }
                 }
             }

@@ -17,6 +17,9 @@ interface UserProfileDao {
 
     @Query("DELETE FROM user_profile WHERE id = 'local_user'")
     suspend fun deleteProfile()
+
+    @Query("UPDATE user_profile SET studyTokens = studyTokens + :amount WHERE id = 'local_user'")
+    suspend fun addStudyTokens(amount: Int)
 }
 
 @Dao

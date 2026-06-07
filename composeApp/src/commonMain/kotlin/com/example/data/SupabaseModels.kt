@@ -26,6 +26,9 @@ data class SupabaseConversation(
     val description: String? = null,
     @SerialName("avatar_url") val avatarUrl: String? = null,
     @SerialName("created_by") val createdBy: String? = null,
+    @SerialName("is_archived") val isArchived: Boolean = false,
+    @SerialName("linked_discussion_id") val linkedDiscussionId: Long? = null,
+    @SerialName("subscriber_count") val subscriberCount: Int? = null,
     @SerialName("created_at") val createdAt: String? = null,
     @SerialName("updated_at") val updatedAt: String? = null
 )
@@ -38,7 +41,11 @@ data class SupabaseMessage(
     val content: String,
     @SerialName("message_type") val messageType: String = "text",
     @SerialName("file_url") val fileUrl: String? = null,
+    @SerialName("file_name") val fileName: String? = null,
+    @SerialName("file_size") val fileSize: Long? = null,
     @SerialName("reply_to_message_id") val replyToMessageId: Long? = null,
+    @SerialName("reply_to_channel_message_id") val replyToChannelMessageId: Long? = null,
+    @SerialName("view_count") val viewCount: Int? = null,
     @SerialName("is_edited") val isEdited: Boolean = false,
     @SerialName("is_deleted") val isDeleted: Boolean = false,
     @SerialName("created_at") val createdAt: String? = null

@@ -23,6 +23,9 @@ import com.example.data.SupabaseConversation
 import com.example.data.UserProfile
 import com.example.ui.AppScreen
 import com.example.ui.StudygramViewModel
+import com.example.ui.components.CreateGroupDialog
+import com.example.ui.components.CreateChannelDialog
+import androidx.compose.runtime.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -31,6 +34,9 @@ fun ChannelsScreen(
     userProfile: UserProfile?
 ) {
     val channels = viewModel.channels
+    var showCreateGroup by remember { mutableStateOf(false) }
+    var showCreateChannel by remember { mutableStateOf(false) }
+    var expandedMenu by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -46,14 +52,42 @@ fun ChannelsScreen(
                     IconButton(onClick = { /* TODO: Search */ }) {
                         Icon(Icons.Default.Search, contentDescription = "Search")
                     }
-                    IconButton(onClick = { /* TODO: Filter */ }) {
+                    IconButton(onClick = { expandedMenu = true }) {
                         Icon(Icons.Default.Menu, contentDescription = "More options")
+                        DropdownMenu(
+                            expanded = expandedMenu,
+                            onDismissRequest = { expandedMenu = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("New Group") },
+                                onClick = { 
+                                    showCreateGroup = true
+                                    expandedMenu = false 
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("New Channel") },
+                                onClick = { 
+                                    showCreateChannel = true
+                                    expandedMenu = false 
+                                }
+                            )
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background
                 )
             )
+        },
+        floatingActionButton = {
+            FloatingActionButton(
+                onClick = { showCreateGroup = true },
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary
+            ) {
+                Icon(Icons.Default.Add, contentDescription = "New Chat")
+            }
         }
     ) { paddingValues ->
         LazyColumn(
@@ -132,6 +166,28 @@ fun ChannelsScreen(
                     }
                 }
             }
+        }
+
+        if (showCreateGroup) {
+            CreateGroupDialog(
+                onDismiss = { showCreateGroup = false },
+                onCreateGroup = { name, description, memberIds ->
+                    viewModel.createGroup(name, description, memberIds) { convId ->
+                        showCreateGroup = false
+                    }
+                }
+            )
+        }
+
+        if (showCreateChannel) {
+            CreateChannelDialog(
+                onDismiss = { showCreateChannel = false },
+                onCreateChannel = { name, description, enableDiscussion ->
+                    viewModel.createChannel(name, description, enableDiscussion) { convId ->
+                        showCreateChannel = false
+                    }
+                }
+            )
         }
     }
 }
