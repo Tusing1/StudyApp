@@ -39,7 +39,7 @@ fun AIChatScreen(viewModel: StudygramViewModel) {
                     }
                 },
                 navigationIcon = {
-                    IconButton(onClick = { viewModel.goBack() }) {
+                    IconButton(onClick = { viewModel.navigateTo(com.example.ui.AppScreen.Channels) }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
@@ -99,9 +99,9 @@ fun AIChatScreen(viewModel: StudygramViewModel) {
             items(messages) { message ->
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = if (message.isMe) Arrangement.End else Arrangement.Start
+                    horizontalArrangement = if (message.isUser) Arrangement.End else Arrangement.Start
                 ) {
-                    if (!message.isMe) {
+                    if (!message.isUser) {
                         Box(
                             modifier = Modifier
                                 .size(32.dp)
@@ -115,13 +115,13 @@ fun AIChatScreen(viewModel: StudygramViewModel) {
                     }
                     
                     Surface(
-                        color = if (message.isMe) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-                        shape = if (message.isMe) RoundedCornerShape(16.dp, 16.dp, 4.dp, 16.dp) else RoundedCornerShape(16.dp, 16.dp, 16.dp, 4.dp),
+                        color = if (message.isUser) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                        shape = if (message.isUser) RoundedCornerShape(16.dp, 16.dp, 4.dp, 16.dp) else RoundedCornerShape(16.dp, 16.dp, 16.dp, 4.dp),
                         modifier = Modifier.widthIn(max = 280.dp)
                     ) {
                         Text(
                             text = message.text,
-                            color = if (message.isMe) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = if (message.isUser) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(16.dp)
                         )
                     }

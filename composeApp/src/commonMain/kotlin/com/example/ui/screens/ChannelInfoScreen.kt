@@ -1,6 +1,7 @@
 package com.example.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
@@ -14,15 +15,16 @@ import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.data.DiscussionChannel
+import com.example.data.SupabaseConversation
 import com.example.ui.AppScreen
 import com.example.ui.StudygramViewModel
 
@@ -30,7 +32,7 @@ import com.example.ui.StudygramViewModel
 @Composable
 fun ChannelInfoScreen(
     viewModel: StudygramViewModel,
-    channel: DiscussionChannel
+    channel: SupabaseConversation
 ) {
     Scaffold(
         topBar = {
@@ -57,11 +59,11 @@ fun ChannelInfoScreen(
             item {
                 Spacer(modifier = Modifier.height(24.dp))
                 
-                val vectorIcon = when (channel.iconName) {
-                    "settings" -> Icons.Default.Settings
-                    "face" -> Icons.Default.Face
-                    "star" -> Icons.Default.Star
-                    "favorite" -> Icons.Default.Favorite
+                val vectorIcon = when {
+                    channel.name?.contains("pharmacology", ignoreCase = true) == true -> Icons.Default.Settings
+                    channel.name?.contains("midwifery", ignoreCase = true) == true -> Icons.Default.Face
+                    channel.name?.contains("pediatric", ignoreCase = true) == true -> Icons.Default.Star
+                    channel.name?.contains("anatomy", ignoreCase = true) == true -> Icons.Default.Favorite
                     else -> Icons.Default.Home
                 }
 
@@ -74,7 +76,7 @@ fun ChannelInfoScreen(
                 ) {
                     Icon(
                         imageVector = vectorIcon,
-                        contentDescription = channel.title,
+                        contentDescription = channel.name ?: "Channel",
                         tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(50.dp)
                     )
@@ -83,14 +85,14 @@ fun ChannelInfoScreen(
                 Spacer(modifier = Modifier.height(16.dp))
 
                 Text(
-                    text = channel.title,
+                    text = channel.name ?: "Room ${channel.id}",
                     style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onBackground
                 )
 
                 Text(
-                    text = "${channel.onlineCount} members",
+                    text = "${channel.subscriberCount ?: 0} members",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 4.dp)
@@ -115,7 +117,7 @@ fun ChannelInfoScreen(
                             modifier = Modifier.padding(bottom = 8.dp)
                         )
                         Text(
-                            text = channel.description,
+                            text = channel.description ?: "No description provided.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurface
                         )
@@ -153,6 +155,80 @@ fun ChannelInfoScreen(
                         )
                     }
                 }
+                
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                // Session Recordings Card
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text(
+                            text = "Session Recordings",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        )
+                        
+                        val channelRecordings = remember(viewModel.realRecordings) {
+                            viewModel.realRecordings
+                                .filter { it.conversationId == channel.id }
+                                .map { call ->
+                                    (call.recordingTitle ?: "Recorded Class") to (call.recordingUrl ?: "")
+                                }
+                        }
+                        
+                        if (channelRecordings.isEmpty()) {
+                            Text(
+                                text = "No call recordings found for this channel.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(vertical = 8.dp)
+                            )
+                        } else {
+                            channelRecordings.forEach { (title, url) ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            viewModel.navigateTo(AppScreen.AudioPlayer(url))
+                                        }
+                                        .padding(vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text("🎤", fontSize = 16.sp)
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = title, 
+                                            color = MaterialTheme.colorScheme.onSurface, 
+                                            fontSize = 13.sp, 
+                                            fontWeight = FontWeight.Bold, 
+                                            maxLines = 1, 
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Text("Duration: Audio Class", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+                                    }
+                                    Text(
+                                        text = "Play", 
+                                        color = MaterialTheme.colorScheme.primary, 
+                                        fontSize = 12.sp, 
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(start = 8.dp)
+                                    )
+                                }
+                                HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f))
+                            }
+                        }
+                    }
+                }
+                
+                Spacer(modifier = Modifier.height(24.dp))
             }
         }
     }

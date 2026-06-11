@@ -10,7 +10,10 @@ data class UserProfile(
     val nursingField: String, // e.g., "General Nursing", "Midwifery", "Pediatrics", "Education"
     val avatarColor: Int, // Hex value of user avatar color
     val registeredAt: Long = System.currentTimeMillis(),
-    val studyTokens: Int = 0
+    val studyTokens: Int = 0,
+    val geminiApiKey: String = "",
+    val notificationsEnabled: Boolean = true,
+    val supabaseSessionJson: String = ""
 )
 
 @Entity(tableName = "discussion_messages")
@@ -50,7 +53,7 @@ data class Bookmark(
 )
 
 data class DiscussionChannel(
-    val id: Long,
+    val id: String,
     val title: String,
     val category: String,
     val description: String,

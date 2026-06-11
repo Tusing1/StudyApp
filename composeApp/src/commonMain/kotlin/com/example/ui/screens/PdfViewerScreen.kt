@@ -23,7 +23,7 @@ fun PdfViewerScreen(viewModel: StudygramViewModel, url: String) {
             TopAppBar(
                 title = { Text(fileName, fontWeight = FontWeight.Bold, maxLines = 1) },
                 navigationIcon = {
-                    IconButton(onClick = { viewModel.goBack() }) {
+                    IconButton(onClick = { viewModel.navigateTo(com.example.ui.AppScreen.Channels) }) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
@@ -36,66 +36,9 @@ fun PdfViewerScreen(viewModel: StudygramViewModel, url: String) {
             )
         }
     ) { paddingValues ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.DarkGray)
-                .padding(paddingValues),
-            contentAlignment = Alignment.Center
-        ) {
-            // Mock PDF Page
-            Surface(
-                color = Color.White,
-                shadowElevation = 8.dp,
-                modifier = Modifier
-                    .fillMaxWidth(0.9f)
-                    .fillMaxHeight(0.8f)
-            ) {
-                Column(
-                    modifier = Modifier.padding(24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text("PDF Viewer Preview", style = MaterialTheme.typography.headlineMedium, color = Color.Black)
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text(
-                        "Currently viewing: $url",
-                        color = Color.DarkGray,
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text(
-                        "Note: A fully functional cross-platform PDF renderer requires native expect/actual WebView bindings which are not implemented in this mockup overlay. This serves as the UI wireframe for Phase 12.",
-                        color = Color.Black
-                    )
-                    // Mock lines for text
-                    Spacer(modifier = Modifier.height(24.dp))
-                    repeat(10) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(12.dp)
-                                .background(Color.LightGray)
-                                .padding(bottom = 8.dp)
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                    }
-                }
-            }
-            
-            // Page Indicator overlay
-            Surface(
-                color = Color.Black.copy(alpha = 0.6f),
-                shape = MaterialTheme.shapes.small,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 24.dp)
-            ) {
-                Text(
-                    "Page 1 of 45",
-                    color = Color.White,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                )
-            }
-        }
+        com.example.ui.components.PdfRendererView(
+            url = url,
+            modifier = Modifier.padding(paddingValues)
+        )
     }
 }

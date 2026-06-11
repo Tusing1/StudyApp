@@ -3,18 +3,25 @@ package com.example.ui
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.data.SupabaseApi
-import com.example.data.SupabaseConversation
-import com.example.data.SupabaseMessage
-import com.example.data.SupabaseUser
-import com.example.data.CallManager
+import com.example.data.*
 import com.example.repository.StudyRepository
-import io.github.jan.supabase.gotrue.auth
-import io.github.jan.supabase.gotrue.providers.builtin.Email
+import io.github.jan.supabase.auth.auth
+import io.github.jan.supabase.auth.providers.builtin.Email
+import io.github.jan.supabase.postgrest.postgrest
+import io.github.jan.supabase.realtime.realtime
+import io.github.jan.supabase.postgrest.query.filter.FilterOperator
+import io.github.jan.supabase.realtime.channel
+import io.github.jan.supabase.realtime.postgresChangeFlow
+import io.github.jan.supabase.realtime.decodeRecord
+import io.github.jan.supabase.storage.storage
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
@@ -32,13 +39,23 @@ sealed interface AppScreen {
     object Settings : AppScreen
     object AIChat : AppScreen
     object StudyLabs : AppScreen
-    object Flashcards : AppScreen // Gamified Revision
     object QuizPractice : AppScreen
-    data class Thread(val messageId: String) : AppScreen
+    data class Thread(val messageId: String, val channelId: String) : AppScreen
     data class AudioPlayer(val url: String) : AppScreen
     data class PdfViewer(val url: String) : AppScreen
     object Bookmarks : AppScreen
+    object InterestsOnboarding : AppScreen
+    object StudyTokens : AppScreen
+    object StudyBuddies : AppScreen
+    object Recordings : AppScreen
 }
+
+data class StudyTransaction(
+    val description: String,
+    val amount: Int,
+    val isEarn: Boolean,
+    val timestamp: Long = System.currentTimeMillis()
+)
 
 data class ChatMessage(
     val senderName: String,
@@ -57,6 +74,13 @@ class StudygramViewModel : ViewModel() {
     var currentScreen by mutableStateOf<AppScreen>(AppScreen.Welcome)
         private set
 
+    var contactsInitialTab by mutableStateOf("friends")
+
+    var remoteProfile by mutableStateOf<SupabaseProfile?>(null)
+    val availableInterests = mutableStateListOf<SupabaseInterestCategory>()
+    var savingInterests by mutableStateOf(false)
+    var loadingInterests by mutableStateOf(false)
+
     // Observe active profile and bookmarks
     val userProfile: StateFlow<UserProfile?> = repository.userProfile
         .stateIn(
@@ -74,7 +98,13 @@ class StudygramViewModel : ViewModel() {
 
     // Chat and channel messages variables
     val activeChannelMessages = mutableStateListOf<SupabaseMessage>()
-    private fun createGroup(name: String, description: String, memberIds: List<String>, onSuccess: (Long) -> Unit) {
+
+    // Comment thread states
+    val messageCommentCounts: MutableMap<String, Int> = mutableStateMapOf<String, Int>()
+    val threadOriginalMessage = mutableStateOf<SupabaseMessage?>(null)
+    val threadReplies = mutableStateListOf<SupabaseMessage>()
+    var threadRepliesLoading by mutableStateOf(false)
+    fun createGroup(name: String, description: String, memberIds: List<String>, onSuccess: (String) -> Unit) {
         viewModelScope.launch {
             val convId = repository.createGroup(name, description, memberIds)
             if (convId != null) {
@@ -84,7 +114,7 @@ class StudygramViewModel : ViewModel() {
         }
     }
 
-    fun createChannel(name: String, description: String, enableDiscussion: Boolean, onSuccess: (Long) -> Unit) {
+    fun createChannel(name: String, description: String, enableDiscussion: Boolean, onSuccess: (String) -> Unit) {
         viewModelScope.launch {
             val convId = repository.createChannel(name, description, enableDiscussion)
             if (convId != null) {
@@ -94,10 +124,102 @@ class StudygramViewModel : ViewModel() {
         }
     }
 
-    fun archiveChannel(conversationId: Long) {
+    fun archiveConversation(conversationId: String) {
+        viewModelScope.launch {
+            try {
+                SupabaseApi.client.postgrest["conversations"]
+                    .update({
+                        set("is_archived", true)
+                    }) {
+                        filter {
+                            eq("id", conversationId)
+                        }
+                    }
+                fetchChannels()
+            } catch (e: Exception) {
+                println("Error archiving conversation: ${e.message}")
+            }
+        }
     }
-    private var activeChannelId: Long? = null
+
+    fun unarchiveConversation(conversationId: String) {
+        viewModelScope.launch {
+            try {
+                SupabaseApi.client.postgrest["conversations"]
+                    .update({
+                        set("is_archived", false)
+                    }) {
+                        filter {
+                            eq("id", conversationId)
+                        }
+                    }
+                fetchChannels()
+            } catch (e: Exception) {
+                println("Error unarchiving conversation: ${e.message}")
+            }
+        }
+    }
+
+    fun deleteConversation(conversationId: String) {
+        viewModelScope.launch {
+            try {
+                // Delete messages
+                SupabaseApi.client.postgrest["messages"].delete {
+                    filter {
+                        eq("conversation_id", conversationId)
+                    }
+                }
+                // Delete participants
+                SupabaseApi.client.postgrest["conversation_participants"].delete {
+                    filter {
+                        eq("conversation_id", conversationId)
+                    }
+                }
+                // Delete conversation
+                SupabaseApi.client.postgrest["conversations"].delete {
+                    filter {
+                        eq("id", conversationId)
+                    }
+                }
+                fetchChannels()
+            } catch (e: Exception) {
+                println("Error deleting conversation: ${e.message}")
+            }
+        }
+    }
+
+    fun deleteMessage(messageId: String) {
+        viewModelScope.launch {
+            try {
+                SupabaseApi.client.postgrest["messages"].delete {
+                    filter {
+                        eq("id", messageId)
+                    }
+                }
+                activeChannelId?.let { loadMessagesForChannel(it) }
+            } catch (e: Exception) {
+                println("Error deleting message: ${e.message}")
+            }
+        }
+    }
+
+
+    fun getUserRole(conversationId: String): String? {
+        val session = SupabaseApi.client.auth.currentSessionOrNull() ?: return null
+        val myUid = session.user?.id ?: return null
+        val conv = conversations.find { it.conversation.id == conversationId } 
+            ?: archivedConversations.find { it.conversation.id == conversationId }
+            ?: return null
+        val participant = conv.participants.find { it.participant.userId == myUid }
+        return participant?.participant?.role
+    }
+
+    private var activeChannelId: String? = null
     val channels = mutableStateListOf<SupabaseConversation>()
+    val conversations = mutableStateListOf<ConversationWithDetails>()
+    val archivedConversations = mutableStateListOf<ConversationWithDetails>()
+    var conversationsLoading by mutableStateOf(false)
+
 
     // Practice Quiz states
     var activeQuizSubject by mutableStateOf("All")
@@ -119,13 +241,14 @@ class StudygramViewModel : ViewModel() {
     val potentialBuddies = mutableStateListOf<com.example.data.UserProfile>()
     val matchedBuddies = mutableStateListOf<com.example.data.UserProfile>()
 
+    var activeIncomingCall by mutableStateOf<SupabaseCall?>(null)
+
     init {
         viewModelScope.launch {
             repository.initDatabaseIfNeeded()
             checkAuthStatus()
             fetchChannels()
             listenForIncomingCalls()
-            potentialBuddies.addAll(com.example.data.DefaultData.MOCK_PEERS)
         }
     }
 
@@ -134,36 +257,162 @@ class StudygramViewModel : ViewModel() {
             val session = SupabaseApi.client.auth.currentSessionOrNull()
             val myUid = session?.user?.id ?: return@launch
 
-            SupabaseApi.client.realtime.channel("public:calls_listener")
+            SupabaseApi.client.channel("public:calls_listener")
                 .postgresChangeFlow<io.github.jan.supabase.realtime.PostgresAction.Insert>(schema = "public") {
                     table = "calls"
-                    filter = "receiver_id=eq.$myUid"
+                    filter("is_active", FilterOperator.EQ, true)
                 }
                 .onEach { action ->
                     val call = action.decodeRecord<com.example.data.SupabaseCall>()
-                    if (call.status == "ringing") {
-                        // User has an incoming call!
-                        // For demonstration, immediately navigate to the Calls UI.
-                        navigateTo(AppScreen.Calls)
+                    if (call.startedBy == myUid) return@onEach
+
+                    try {
+                        val isParticipant = SupabaseApi.client.postgrest["conversation_participants"]
+                            .select {
+                                filter {
+                                    eq("conversation_id", call.conversationId)
+                                    eq("user_id", myUid)
+                                }
+                            }
+                            .decodeList<SupabaseConversationParticipant>()
+                            .isNotEmpty()
+
+                        if (isParticipant) {
+                            activeIncomingCall = call
+                        }
+                    } catch (e: Exception) {
+                        println("Error checking call participation: ${e.message}")
                     }
                 }
                 .launchIn(this)
         }
     }
 
-    private fun fetchChannels() {
+    fun acceptIncomingCall(call: SupabaseCall) {
+        val session = SupabaseApi.client.auth.currentSessionOrNull()
+        val myUid = session?.user?.id ?: return
+        callManager.answerCall(call.id ?: "", myUid)
+        activeIncomingCall = null
+        navigateTo(AppScreen.Calls)
+    }
+
+    fun declineIncomingCall() {
+        activeIncomingCall = null
+    }
+
+    fun fetchChannels() {
         viewModelScope.launch {
+            fetchPotentialBuddies()
+            fetchRealRecordings()
+            conversationsLoading = true
             try {
-                val dbChannels = SupabaseApi.client.postgrest["conversations"]
+                val session = SupabaseApi.client.auth.currentSessionOrNull()
+                val myUid = session?.user?.id
+                if (myUid == null) {
+                    conversationsLoading = false
+                    return@launch
+                }
+
+                val participants = SupabaseApi.client.postgrest["conversation_participants"]
+                    .select {
+                        filter {
+                            eq("user_id", myUid)
+                        }
+                    }
+                    .decodeList<SupabaseConversationParticipant>()
+
+                val convIds = participants.map { it.conversationId }
+                if (convIds.isEmpty()) {
+                    conversations.clear()
+                    archivedConversations.clear()
+                    conversationsLoading = false
+                    return@launch
+                }
+
+                val dbConversations = SupabaseApi.client.postgrest["conversations"]
                     .select()
                     .decodeList<SupabaseConversation>()
+                    .filter { it.id in convIds }
+
+                val allParticipants = SupabaseApi.client.postgrest["conversation_participants"]
+                    .select()
+                    .decodeList<SupabaseConversationParticipant>()
+                    .filter { it.conversationId in convIds }
+
+                val allUserIds = allParticipants.map { it.userId }.distinct()
+                val allProfiles = SupabaseApi.client.postgrest["profiles"]
+                    .select()
+                    .decodeList<SupabaseProfile>()
+                    .filter { it.userId in allUserIds }
+
+                val lastMessages = try {
+                    SupabaseApi.client.postgrest["messages"]
+                        .select {
+                            order("created_at", io.github.jan.supabase.postgrest.query.Order.DESCENDING)
+                        }
+                        .decodeList<SupabaseMessage>()
+                        .filter { it.conversationId in convIds }
+                } catch (e: Exception) {
+                    emptyList()
+                }
+
+                val activeList = mutableListOf<ConversationWithDetails>()
+                val archivedList = mutableListOf<ConversationWithDetails>()
+
+                for (conv in dbConversations) {
+                    val convParticipants = allParticipants.filter { it.conversationId == conv.id }
+                    val participantsWithProfiles = convParticipants.map { p ->
+                        ParticipantWithProfile(
+                            participant = p,
+                            profile = allProfiles.find { it.userId == p.userId }
+                        )
+                    }
+
+                    val convMessages = lastMessages.filter { it.conversationId == conv.id }
+                    val lastMsg = convMessages.firstOrNull()
+
+                    val isSelfChat = conv.type == "direct" && convParticipants.size == 1 && convParticipants[0].userId == myUid
+                    val isSavedMessages = isSelfChat || conv.type == "saved"
+
+                    val details = ConversationWithDetails(
+                        conversation = conv,
+                        participants = participantsWithProfiles,
+                        lastMessage = lastMsg,
+                        isSavedMessages = isSavedMessages,
+                        isSelfChat = isSelfChat
+                    )
+
+                    if (conv.isArchived) {
+                        archivedList.add(details)
+                    } else {
+                        activeList.add(details)
+                    }
+                }
+
+                val sortFn = { a: ConversationWithDetails, b: ConversationWithDetails ->
+                    val aTime = a.lastMessage?.createdAt ?: a.conversation.updatedAt ?: a.conversation.createdAt ?: ""
+                    val bTime = b.lastMessage?.createdAt ?: b.conversation.updatedAt ?: b.conversation.createdAt ?: ""
+                    bTime.compareTo(aTime)
+                }
+                activeList.sortWith(Comparator(sortFn))
+                archivedList.sortWith(Comparator(sortFn))
+
+                conversations.clear()
+                conversations.addAll(activeList)
+                
+                archivedConversations.clear()
+                archivedConversations.addAll(archivedList)
+
                 channels.clear()
-                channels.addAll(dbChannels)
+                channels.addAll(dbConversations)
             } catch (e: Exception) {
-                // Keep UI going even if DB empty
+                println("Error fetching conversations: ${e.message}")
+            } finally {
+                conversationsLoading = false
             }
         }
     }
+
 
     // Navigation helper
     fun navigateTo(screen: AppScreen) {
@@ -187,10 +436,29 @@ class StudygramViewModel : ViewModel() {
     }
 
     // Gamification
-    fun addStudyTokens(amount: Int) {
+    val tokenTransactions = mutableStateListOf<StudyTransaction>(
+        StudyTransaction("Daily Login Bonus", 15, true, System.currentTimeMillis() - 3600000),
+        StudyTransaction("Complete Profile Setup", 25, true, System.currentTimeMillis() - 86400000)
+    )
+    var loginStreak by mutableStateOf(3)
+
+    fun addStudyTokens(amount: Int, description: String = "Lab game reward") {
         viewModelScope.launch {
             repository.addStudyTokens(amount)
+            tokenTransactions.add(0, StudyTransaction(description, amount, true))
         }
+    }
+
+    fun spendStudyTokens(amount: Int, description: String): Boolean {
+        val currentTokens = userProfile.value?.studyTokens ?: 0
+        if (currentTokens >= amount) {
+            viewModelScope.launch {
+                repository.addStudyTokens(-amount)
+                tokenTransactions.add(0, StudyTransaction(description, amount, false))
+            }
+            return true
+        }
+        return false
     }
 
     // Study Buddies Matching
@@ -204,16 +472,38 @@ class StudygramViewModel : ViewModel() {
         }
     }
 
-    // Log-out or change profile details
+    fun updateGeminiApiKey(key: String) {
+        viewModelScope.launch {
+            repository.updateGeminiApiKey(key)
+        }
+    }
+
+    fun updateNotificationsEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            repository.updateNotificationsEnabled(enabled)
+        }
+    }
+
+    fun updateProfileDetails(username: String, field: String, color: Int) {
+        viewModelScope.launch {
+            repository.updateProfileDetails(username, field, color)
+        }
+    }
+
     fun logout() {
         viewModelScope.launch {
+            try {
+                SupabaseApi.client.auth.signOut()
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
             repository.clearProfile()
             currentScreen = AppScreen.Welcome
         }
     }
 
     // Load messages dynamically and collect reactive updates
-    private fun loadMessagesForChannel(channelId: Long) {
+    private fun loadMessagesForChannel(channelId: String) {
         activeChannelId = channelId
         viewModelScope.launch {
             try {
@@ -227,28 +517,73 @@ class StudygramViewModel : ViewModel() {
                     activeChannelMessages.addAll(msgs)
                 }
 
-                // 2. Realtime Subscriptions
-                val channel = SupabaseApi.client.realtime.channel("public:messages:$channelId")
+                // Fetch comment counts if it's a channel and has a linked discussion group
+                val activeConv = conversations.find { it.conversation.id == channelId }?.conversation
+                    ?: archivedConversations.find { it.conversation.id == channelId }?.conversation
+                val discussionId = activeConv?.linkedDiscussionId
+                if (discussionId != null) {
+                    fetchCommentCountsForChannel(discussionId)
+                }
+
+                // Cache locally in Room DB
+                for (m in msgs) {
+                    val localMsg = DiscussionMessage(
+                        channelId = channelId,
+                        senderName = m.senderId,
+                        senderField = "Student",
+                        avatarColor = 0xFF00796B.toInt(),
+                        text = m.content ?: "",
+                        isAiGenerated = m.messageType == "ai"
+                    )
+                    repository.insertMessageDirect(localMsg)
+                }
+
+                val channel = SupabaseApi.client.channel("public:messages:$channelId")
                 channel.postgresChangeFlow<io.github.jan.supabase.realtime.PostgresAction.Insert>(schema = "public") {
                     table = "messages"
-                    filter = "conversation_id=eq.${channelId}"
+                    filter("conversation_id", FilterOperator.EQ, channelId)
                 }.onEach {
                     val newMsg = it.decodeRecord<SupabaseMessage>()
                     // Avoid duplicating optimistic UI inserts
                     if (activeChannelMessages.none { existing -> existing.id == newMsg.id }) {
                         activeChannelMessages.add(0, newMsg)
                     }
+                    // Cache realtime message too
+                    val localMsg = DiscussionMessage(
+                        channelId = channelId,
+                        senderName = newMsg.senderId,
+                        senderField = "Student",
+                        avatarColor = 0xFF00796B.toInt(),
+                        text = newMsg.content ?: "",
+                        isAiGenerated = newMsg.messageType == "ai"
+                    )
+                    repository.insertMessageDirect(localMsg)
                 }.launchIn(viewModelScope)
                 SupabaseApi.client.realtime.connect()
                 channel.subscribe()
             } catch (e: Exception) {
-                // Error fetching messages
+                // Fallback to offline cache
+                repository.getMessages(channelId).collect { localMsgs ->
+                    if (activeChannelId == channelId) {
+                        val mapped = localMsgs.map { local ->
+                            SupabaseMessage(
+                                id = local.id.toString(),
+                                conversationId = local.channelId,
+                                senderId = local.senderName,
+                                content = local.text,
+                                messageType = if (local.isAiGenerated) "ai" else "text"
+                            )
+                        }
+                        activeChannelMessages.clear()
+                        activeChannelMessages.addAll(mapped)
+                    }
+                }
             }
         }
     }
 
     // Post comment/post in active discussion channels
-    fun sendDiscussionMessage(channelId: Long, text: String) {
+    fun sendDiscussionMessage(channelId: String, text: String) {
         if (text.isBlank()) return
 
         viewModelScope.launch {
@@ -275,8 +610,13 @@ class StudygramViewModel : ViewModel() {
         }
     }
 
-    // Upload file and send message
-    fun uploadFileAndSendMessage(channelId: Long, text: String, fileBytes: ByteArray, fileName: String) {
+    fun uploadFileAndSendMessage(
+        channelId: String,
+        text: String,
+        fileBytes: ByteArray,
+        fileName: String,
+        messageType: String = "image"
+    ) {
         viewModelScope.launch {
             try {
                 val session = SupabaseApi.client.auth.currentSessionOrNull()
@@ -295,8 +635,10 @@ class StudygramViewModel : ViewModel() {
                     conversationId = channelId,
                     senderId = uid,
                     content = text.ifBlank { "Sent an attachment" },
-                    messageType = "image", // or "pdf"
-                    fileUrl = publicUrl
+                    messageType = messageType,
+                    fileUrl = publicUrl,
+                    fileName = fileName,
+                    fileSize = fileBytes.size.toLong()
                 )
                 
                 val insertedMsg = SupabaseApi.client.postgrest["messages"]
@@ -449,16 +791,14 @@ class StudygramViewModel : ViewModel() {
             aiPlaygroundMessages.add(ChatMessage(
                 senderName = "AI Tutor",
                 text = "Hello! I am your Studygram AI Tutor. How can I help you today?",
-                isMe = false,
-                isAiGenerated = true
+                isUser = false
             ))
         }
         
         aiPlaygroundMessages.add(ChatMessage(
             senderName = "Me",
             text = userText,
-            isMe = true,
-            isAiGenerated = false
+            isUser = true
         ))
         
         isGeneratingAI = true
@@ -470,8 +810,7 @@ class StudygramViewModel : ViewModel() {
             aiPlaygroundMessages.add(ChatMessage(
                 senderName = "AI Tutor",
                 text = response,
-                isMe = false,
-                isAiGenerated = true
+                isUser = false
             ))
             isGeneratingAI = false
         }
@@ -489,7 +828,7 @@ class StudygramViewModel : ViewModel() {
                 repository.addBookmark(
                     type = "DISCUSSION",
                     title = "Group Thread: ${msg.senderId}",
-                    description = if (msg.content.length > 50) msg.content.take(50) + "..." else msg.content,
+                    description = if ((msg.content?.length ?: 0) > 50) msg.content?.take(50) + "..." else (msg.content ?: ""),
                     refId = msgIdStr
                 )
                 // repository.updateMessageBookmarkStatus(msg.id, true)
@@ -574,10 +913,10 @@ class StudygramViewModel : ViewModel() {
     fun checkAuthStatus() {
         viewModelScope.launch {
             try {
-                // If there's an active session, navigate to Channels
+                SupabaseApi.client.auth.awaitInitialization()
                 val session = SupabaseApi.client.auth.currentSessionOrNull()
                 if (session != null) {
-                    navigateTo(AppScreen.Channels)
+                    fetchRemoteProfile()
                 } else {
                     navigateTo(AppScreen.Welcome)
                 }
@@ -595,7 +934,7 @@ class StudygramViewModel : ViewModel() {
                     this.email = email
                     password = pass
                 }
-                navigateTo(AppScreen.Channels)
+                fetchRemoteProfile()
             } catch (e: Exception) {
                 authError = e.message ?: "Login failed"
             }
@@ -609,21 +948,286 @@ class StudygramViewModel : ViewModel() {
                 val result = SupabaseApi.client.auth.signUpWith(Email) {
                     this.email = email
                     password = pass
+                    data = kotlinx.serialization.json.buildJsonObject {
+                        put("username", kotlinx.serialization.json.JsonPrimitive(user))
+                        put("full_name", kotlinx.serialization.json.JsonPrimitive(display))
+                    }
                 }
                 val uid = result?.id ?: throw Exception("No user ID returned")
                 
-                // Insert into public.users
-                val newUser = SupabaseUser(
+                // Insert into public.profiles
+                val newProfile = SupabaseProfile(
                     id = uid,
+                    userId = uid,
                     username = user,
-                    displayName = display,
-                    email = email
+                    fullName = display
                 )
-                SupabaseApi.client.postgrest["users"].insert(newUser)
+                SupabaseApi.client.postgrest["profiles"].insert(newProfile)
                 
-                navigateTo(AppScreen.Channels)
+                fetchRemoteProfile()
             } catch (e: Exception) {
                 authError = e.message ?: "Sign up failed"
+            }
+        }
+    }
+
+    fun fetchRemoteProfile() {
+        viewModelScope.launch {
+            try {
+                val session = SupabaseApi.client.auth.currentSessionOrNull() ?: return@launch
+                val uid = session.user?.id ?: return@launch
+                val profile = SupabaseApi.client.postgrest["profiles"]
+                    .select { filter { eq("user_id", uid) } }
+                    .decodeSingle<SupabaseProfile>()
+                remoteProfile = profile
+                
+                // Synchronize locally in Room DB
+                val db = DatabaseProvider.getDatabase()
+                val dao = db.userProfileDao()
+                val localProf = dao.getUserProfileDirect()
+                if (localProf == null) {
+                    val activeSession = SupabaseApi.client.auth.currentSessionOrNull()
+                    val sessionJson = activeSession?.let {
+                        kotlinx.serialization.json.Json.encodeToString(io.github.jan.supabase.auth.user.UserSession.serializer(), it)
+                    } ?: ""
+                    dao.insertProfile(
+                        UserProfile(
+                            id = "local_user",
+                            username = profile.username,
+                            nursingField = profile.bio ?: "General",
+                            avatarColor = profile.interests?.hashCode() ?: 0xFF8B5CF6.toInt(),
+                            supabaseSessionJson = sessionJson
+                        )
+                    )
+                } else {
+                    dao.updateProfileDetails(
+                        profile.username,
+                        profile.bio ?: "General",
+                        profile.interests?.hashCode() ?: 0xFF8B5CF6.toInt()
+                    )
+                }
+
+                if (profile.interests == null || profile.interests.size < 3) {
+                    navigateTo(AppScreen.InterestsOnboarding)
+                } else {
+                    navigateTo(AppScreen.Channels)
+                }
+            } catch (e: Exception) {
+                println("Error fetching remote profile: ${e.message}")
+                // Fallback to Channels if profile retrieval fails
+                navigateTo(AppScreen.Channels)
+            }
+        }
+    }
+
+    fun fetchAvailableInterests() {
+        loadingInterests = true
+        viewModelScope.launch {
+            try {
+                val list = SupabaseApi.client.postgrest["interest_categories"]
+                    .select()
+                    .decodeList<SupabaseInterestCategory>()
+                availableInterests.clear()
+                availableInterests.addAll(list)
+            } catch (e: Exception) {
+                availableInterests.clear()
+                availableInterests.addAll(listOf(
+                    SupabaseInterestCategory("1", "Pharmacology", "💊"),
+                    SupabaseInterestCategory("2", "Midwifery", "🤰"),
+                    SupabaseInterestCategory("3", "Pediatrics", "👶"),
+                    SupabaseInterestCategory("4", "Anatomy", "🫀"),
+                    SupabaseInterestCategory("5", "Surgical Review", "🏥"),
+                    SupabaseInterestCategory("6", "General Nursing", "🩺"),
+                    SupabaseInterestCategory("7", "Midwifery Care", "🍼"),
+                    SupabaseInterestCategory("8", "Child Health", "🧸"),
+                    SupabaseInterestCategory("9", "Calculations", "✏️")
+                ))
+            } finally {
+                loadingInterests = false
+            }
+        }
+    }
+
+    fun saveInterests(selectedInterests: List<String>, onComplete: () -> Unit) {
+        savingInterests = true
+        viewModelScope.launch {
+            try {
+                val session = SupabaseApi.client.auth.currentSessionOrNull() ?: return@launch
+                val uid = session.user?.id ?: return@launch
+                
+                SupabaseApi.client.postgrest["profiles"]
+                    .update({
+                        set("interests", selectedInterests)
+                    }) {
+                        filter {
+                            eq("user_id", uid)
+                        }
+                    }
+                
+                fetchRemoteProfile()
+                onComplete()
+            } catch (e: Exception) {
+                println("Error saving interests: ${e.message}")
+            } finally {
+                savingInterests = false
+            }
+        }
+    }
+
+    fun fetchCommentCountsForChannel(discussionGroupId: String) {
+        viewModelScope.launch {
+            try {
+                val msgs = SupabaseApi.client.postgrest["messages"]
+                    .select {
+                        filter {
+                            eq("conversation_id", discussionGroupId)
+                        }
+                    }
+                    .decodeList<SupabaseMessage>()
+                
+                val counts = msgs.filter { it.replyToChannelMessageId != null }
+                    .groupBy { it.replyToChannelMessageId!! }
+                    .mapValues { it.value.size }
+                
+                counts.forEach { (msgId, count) ->
+                    messageCommentCounts.put(msgId, count)
+                }
+            } catch (e: Exception) {
+                println("Error fetching comment counts: ${e.message}")
+            }
+        }
+    }
+
+    fun loadThreadComments(channelMessageId: String, discussionGroupId: String) {
+        threadRepliesLoading = true
+        viewModelScope.launch {
+            try {
+                // 1. Find or fetch original message
+                val localMsg = activeChannelMessages.find { it.id == channelMessageId }
+                if (localMsg != null) {
+                    threadOriginalMessage.value = localMsg
+                } else {
+                    val originalList = SupabaseApi.client.postgrest["messages"]
+                        .select { filter { eq("id", channelMessageId) } }
+                        .decodeList<SupabaseMessage>()
+                    threadOriginalMessage.value = originalList.firstOrNull()
+                }
+
+                // 2. Fetch comments from discussion group
+                val msgs = SupabaseApi.client.postgrest["messages"]
+                    .select {
+                        filter {
+                            eq("conversation_id", discussionGroupId)
+                            eq("reply_to_channel_message_id", channelMessageId)
+                        }
+                        order("created_at", io.github.jan.supabase.postgrest.query.Order.ASCENDING)
+                    }
+                    .decodeList<SupabaseMessage>()
+                
+                threadReplies.clear()
+                threadReplies.addAll(msgs)
+
+                // 3. Listen to Realtime updates for comment thread
+                val channel = SupabaseApi.client.channel("public:comments:$channelMessageId")
+                channel.postgresChangeFlow<io.github.jan.supabase.realtime.PostgresAction.Insert>(schema = "public") {
+                    table = "messages"
+                    filter("conversation_id", FilterOperator.EQ, discussionGroupId)
+                    filter("reply_to_channel_message_id", FilterOperator.EQ, channelMessageId)
+                }.onEach {
+                    val newComment = it.decodeRecord<SupabaseMessage>()
+                    if (threadReplies.none { existing -> existing.id == newComment.id }) {
+                        threadReplies.add(newComment)
+                        val currentCount = messageCommentCounts[channelMessageId] ?: 0
+                        messageCommentCounts.put(channelMessageId, currentCount + 1)
+                    }
+                }.launchIn(viewModelScope)
+
+                SupabaseApi.client.realtime.connect()
+                channel.subscribe()
+            } catch (e: Exception) {
+                println("Error loading comments thread: ${e.message}")
+            } finally {
+                threadRepliesLoading = false
+            }
+        }
+    }
+
+    fun sendThreadComment(channelMessageId: String, discussionGroupId: String, content: String) {
+        if (content.isBlank()) return
+        viewModelScope.launch {
+            try {
+                val session = SupabaseApi.client.auth.currentSessionOrNull()
+                val uid = session?.user?.id ?: return@launch
+
+                val newMsg = SupabaseMessage(
+                    conversationId = discussionGroupId,
+                    senderId = uid,
+                    content = content,
+                    replyToChannelMessageId = channelMessageId,
+                    messageType = "text"
+                )
+
+                val insertedMsg = SupabaseApi.client.postgrest["messages"]
+                    .insert(newMsg) { select() }
+                    .decodeSingle<SupabaseMessage>()
+                
+                if (threadReplies.none { it.id == insertedMsg.id }) {
+                    threadReplies.add(insertedMsg)
+                }
+                
+                val currentCount = messageCommentCounts[channelMessageId] ?: 0
+                messageCommentCounts.put(channelMessageId, currentCount + 1)
+            } catch (e: Exception) {
+                println("Error sending comment: ${e.message}")
+            }
+        }
+    }
+
+    val realRecordings = mutableStateListOf<SupabaseCall>()
+    var recordingsLoading by mutableStateOf(false)
+
+    fun fetchRealRecordings() {
+        recordingsLoading = true
+        viewModelScope.launch {
+            try {
+                val list = SupabaseApi.client.postgrest["calls"]
+                    .select()
+                    .decodeList<SupabaseCall>()
+                    .filter { !it.recordingUrl.isNullOrBlank() }
+                realRecordings.clear()
+                realRecordings.addAll(list)
+            } catch (e: Exception) {
+                println("Error fetching recordings: ${e.message}")
+            } finally {
+                recordingsLoading = false
+            }
+        }
+    }
+
+    fun fetchPotentialBuddies() {
+        viewModelScope.launch {
+            try {
+                val session = SupabaseApi.client.auth.currentSessionOrNull()
+                val myUid = session?.user?.id ?: return@launch
+                
+                val profiles = SupabaseApi.client.postgrest["profiles"]
+                    .select()
+                    .decodeList<SupabaseProfile>()
+                
+                val realPeers = profiles.filter { it.userId != myUid }.map { sp ->
+                    com.example.data.UserProfile(
+                        id = sp.userId,
+                        username = sp.username,
+                        nursingField = sp.interests?.firstOrNull() ?: "General Nursing",
+                        avatarColor = sp.interests?.hashCode() ?: 0xFF8B5CF6.toInt()
+                    )
+                }
+                potentialBuddies.clear()
+                potentialBuddies.addAll(realPeers)
+            } catch (e: Exception) {
+                println("Error fetching potential buddies: ${e.message}")
+                potentialBuddies.clear()
+                potentialBuddies.addAll(com.example.data.DefaultData.MOCK_PEERS)
             }
         }
     }

@@ -12,6 +12,9 @@ interface UserProfileDao {
     @Query("SELECT * FROM user_profile WHERE id = 'local_user' LIMIT 1")
     fun getUserProfile(): Flow<UserProfile?>
 
+    @Query("SELECT * FROM user_profile WHERE id = 'local_user' LIMIT 1")
+    suspend fun getUserProfileDirect(): UserProfile?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertProfile(profile: UserProfile)
 
@@ -20,6 +23,18 @@ interface UserProfileDao {
 
     @Query("UPDATE user_profile SET studyTokens = studyTokens + :amount WHERE id = 'local_user'")
     suspend fun addStudyTokens(amount: Int)
+
+    @Query("UPDATE user_profile SET geminiApiKey = :key WHERE id = 'local_user'")
+    suspend fun updateGeminiApiKey(key: String)
+
+    @Query("UPDATE user_profile SET notificationsEnabled = :enabled WHERE id = 'local_user'")
+    suspend fun updateNotificationsEnabled(enabled: Boolean)
+
+    @Query("UPDATE user_profile SET username = :username, nursingField = :field, avatarColor = :color WHERE id = 'local_user'")
+    suspend fun updateProfileDetails(username: String, field: String, color: Int)
+
+    @Query("UPDATE user_profile SET supabaseSessionJson = :json WHERE id = 'local_user'")
+    suspend fun updateSupabaseSessionJson(json: String)
 }
 
 @Dao

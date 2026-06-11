@@ -12,13 +12,12 @@ import com.example.ui.screens.StudygramAppContent
 import com.example.ui.theme.MyApplicationTheme
 
 import com.example.data.DatabaseProvider
-import com.shepeliev.webrtckmp.WebRtc
-
 class MainActivity : ComponentActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
+    currentActivity = this
     DatabaseProvider.init(applicationContext)
-    WebRtc.initialize(applicationContext)
+    com.example.data.PermissionHandler.register(this)
     enableEdgeToEdge()
     setContent {
       MyApplicationTheme {
@@ -29,6 +28,17 @@ class MainActivity : ComponentActivity() {
         )
       }
     }
+  }
+
+  override fun onDestroy() {
+    super.onDestroy()
+    if (currentActivity == this) {
+      currentActivity = null
+    }
+  }
+
+  companion object {
+    var currentActivity: ComponentActivity? = null
   }
 }
 

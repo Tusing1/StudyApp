@@ -1,8 +1,7 @@
 package com.example.ui.screens
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
+import androidx.compose.animation.*
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -22,6 +21,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalFocusManager
@@ -40,7 +40,12 @@ import com.example.data.*
 import com.example.ui.AppScreen
 import com.example.ui.ChatMessage
 import com.example.ui.StudygramViewModel
-// Removed java.text and java.util imports
+import com.example.ui.components.AnimatedGradientBackground
+import com.example.ui.components.AnimatedScreenEnter
+import com.example.ui.components.AppScreenShowsBottomNav
+import com.example.ui.components.GlassCard
+import com.example.ui.components.StudygramButton
+import com.example.ui.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -50,68 +55,155 @@ fun StudygramAppContent(
 ) {
     val activeScreen = viewModel.currentScreen
     val userProfile by viewModel.userProfile.collectAsState()
+    val showBottomNav = AppScreenShowsBottomNav(activeScreen)
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
+        contentWindowInsets = WindowInsets(0.dp),
+        containerColor = BgDeep,
         bottomBar = {
-            if (activeScreen !is AppScreen.Welcome && activeScreen !is AppScreen.Login && activeScreen !is AppScreen.SignUp) {
+            AnimatedVisibility(
+                visible = showBottomNav,
+                enter = slideInVertically { it } + fadeIn(),
+                exit = slideOutVertically { it } + fadeOut()
+            ) {
                 StudygramBottomNavBar(
                     currentScreen = activeScreen,
                     onNavigate = { viewModel.navigateTo(it) }
                 )
             }
-        },
-        contentWindowInsets = WindowInsets.safeDrawing
+        }
     ) { innerPadding ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .background(MaterialTheme.colorScheme.background)
+        AnimatedGradientBackground(
+            modifier = Modifier.fillMaxSize()
         ) {
-            when (activeScreen) {
-                is AppScreen.Welcome -> WelcomeScreen(
-                    onNavigateToLogin = { viewModel.navigateTo(AppScreen.Login) },
-                    onNavigateToSignUp = { viewModel.navigateTo(AppScreen.SignUp) }
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(bottom = innerPadding.calculateBottomPadding())
+            ) {
+                AnimatedContent(
+                    targetState = activeScreen,
+                    transitionSpec = {
+                        fadeIn(tween(350)) + slideInHorizontally { it / 6 } togetherWith
+                        fadeOut(tween(250)) + slideOutHorizontally { -it / 6 }
+                },
+                label = "screenTransition"
+            ) { screen ->
+                AnimatedScreenEnter {
+                    when (screen) {
+                        is AppScreen.Welcome -> WelcomeScreen(
+                            onNavigateToLogin = { viewModel.navigateTo(AppScreen.Login) },
+                            onNavigateToSignUp = { viewModel.navigateTo(AppScreen.SignUp) }
+                        )
+                        is AppScreen.Login -> LoginScreen(
+                            viewModel = viewModel,
+                            onNavigateBack = { viewModel.navigateTo(AppScreen.Welcome) },
+                            onLoginSuccess = { viewModel.navigateTo(AppScreen.Channels) }
+                        )
+                        is AppScreen.SignUp -> SignUpScreen(
+                            viewModel = viewModel,
+                            onNavigateBack = { viewModel.navigateTo(AppScreen.Welcome) },
+                            onSignUpSuccess = { viewModel.navigateTo(AppScreen.Channels) }
+                        )
+                        is AppScreen.Channels -> ChannelsScreen(
+                            viewModel = viewModel,
+                            userProfile = userProfile
+                        )
+                        is AppScreen.Calls -> CallsScreen(viewModel = viewModel)
+                        is AppScreen.Contacts -> ContactsScreen(viewModel = viewModel)
+                        is AppScreen.Settings -> SettingsScreen(viewModel = viewModel)
+                        is AppScreen.StudyTokens -> StudyTokensScreen(viewModel = viewModel)
+                        is AppScreen.Thread -> ThreadScreen(viewModel = viewModel, messageId = screen.messageId, channelId = screen.channelId)
+                        is AppScreen.AudioPlayer -> AudioPlayerScreen(viewModel = viewModel, url = screen.url)
+                        is AppScreen.PdfViewer -> PdfViewerScreen(viewModel = viewModel, url = screen.url)
+                        is AppScreen.AIChat -> AIChatScreen(viewModel = viewModel)
+                        is AppScreen.StudyLabs -> StudyLabsScreen(viewModel = viewModel)
+                        is AppScreen.StudyBuddies -> StudyBuddiesScreen(viewModel = viewModel)
+                        is AppScreen.Recordings -> RecordingsScreen(viewModel = viewModel)
+                        is AppScreen.DiscussionRoom -> RoomScreen(
+                            viewModel = viewModel,
+                            channel = screen.channel
+                        )
+                        is AppScreen.ChannelInfo -> ChannelInfoScreen(
+                            viewModel = viewModel,
+                            channel = screen.channel
+                        )
+                        is AppScreen.QuizPractice -> QuizScreen(viewModel = viewModel)
+                        is AppScreen.Bookmarks -> BookmarksScreen(viewModel = viewModel)
+                        is AppScreen.InterestsOnboarding -> InterestsOnboardingScreen(
+                            viewModel = viewModel,
+                            onComplete = { viewModel.navigateTo(AppScreen.Channels) }
+                        )
+                    }
+                }
+            }
+        }
+
+            val incomingCall = viewModel.activeIncomingCall
+            if (incomingCall != null) {
+                IncomingCallOverlay(
+                    onAccept = { viewModel.acceptIncomingCall(incomingCall) },
+                    onDecline = { viewModel.declineIncomingCall() }
                 )
-                is AppScreen.Login -> LoginScreen(
-                    onNavigateBack = { viewModel.navigateTo(AppScreen.Welcome) },
-                    onLoginSuccess = { viewModel.navigateTo(AppScreen.Channels) }
-                )
-                is AppScreen.SignUp -> SignUpScreen(
-                    onNavigateBack = { viewModel.navigateTo(AppScreen.Welcome) },
-                    onSignUpSuccess = { viewModel.navigateTo(AppScreen.Channels) }
-                )
-                is AppScreen.Channels -> ChannelsScreen(
-                    viewModel = viewModel,
-                    userProfile = userProfile
-                )
-                is AppScreen.Calls -> CallsScreen()
-                is AppScreen.Contacts -> ContactsScreen(viewModel = viewModel)
-                is AppScreen.Settings -> SettingsScreen(viewModel = viewModel)
-                is AppScreen.Flashcards -> FlashcardsScreen(viewModel = viewModel)
-                is AppScreen.Thread -> ThreadScreen(viewModel = viewModel, messageId = activeScreen.messageId)
-                is AppScreen.AudioPlayer -> AudioPlayerScreen(viewModel = viewModel, url = activeScreen.url)
-                is AppScreen.PdfViewer -> PdfViewerScreen(viewModel = viewModel, url = activeScreen.url)
-                is AppScreen.AIChat -> AIChatScreen(viewModel = viewModel)
-                is AppScreen.StudyLabs -> StudyLabsScreen(viewModel = viewModel)
-                is AppScreen.DiscussionRoom -> RoomScreen(
-                    viewModel = viewModel,
-                    channel = activeScreen.channel
-                )
-                is AppScreen.ChannelInfo -> ChannelInfoScreen(
-                    viewModel = viewModel,
-                    channel = activeScreen.channel
-                )
-                is AppScreen.QuizPractice -> QuizScreen(
-                    viewModel = viewModel
-                )
-                is AppScreen.AIChat -> AIChatPlaygroundScreen(
-                    viewModel = viewModel
-                )
-                is AppScreen.Bookmarks -> BookmarksScreen(
-                    viewModel = viewModel
-                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun IncomingCallOverlay(
+    onAccept: () -> Unit,
+    onDecline: () -> Unit
+) {
+    val pulse = rememberInfiniteTransition(label = "callPulse").animateFloat(
+        initialValue = 1f,
+        targetValue = 1.15f,
+        animationSpec = infiniteRepeatable(tween(600), RepeatMode.Reverse),
+        label = "callScale"
+    )
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.7f)),
+        contentAlignment = Alignment.Center
+    ) {
+        GlassCard(
+            modifier = Modifier
+                .fillMaxWidth(0.85f)
+                .padding(16.dp),
+            cornerRadius = 28.dp
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("📞 Incoming Call!", fontSize = 22.sp, fontWeight = FontWeight.Black, color = Color.White)
+                Spacer(modifier = Modifier.height(8.dp))
+                Text("Someone wants to study with you", color = TextMuted, fontSize = 13.sp)
+                Spacer(modifier = Modifier.height(24.dp))
+                Box(
+                    modifier = Modifier
+                        .size((90 * pulse.value).dp)
+                        .clip(CircleShape)
+                        .background(
+                            Brush.radialGradient(listOf(NeonGreen.copy(0.3f), Color.Transparent))
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("🎙️", fontSize = 40.sp)
+                }
+                Spacer(modifier = Modifier.height(24.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    StudygramButton(
+                        text = "Accept",
+                        emoji = "✅",
+                        onClick = onAccept,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                TextButton(onClick = onDecline) {
+                    Text("Decline", color = Color(0xFFEF4444), fontWeight = FontWeight.Bold)
+                }
             }
         }
     }
@@ -122,340 +214,65 @@ fun StudygramBottomNavBar(
     currentScreen: AppScreen,
     onNavigate: (AppScreen) -> Unit
 ) {
-    NavigationBar(
+    val tabs = listOf(
+        Triple(AppScreen.Channels, "💬", "Chats"),
+        Triple(AppScreen.Calls, "📞", "Calls"),
+        Triple(AppScreen.Contacts, "👋", "Buddies"),
+        Triple(AppScreen.StudyLabs, "🎮", "Labs"),
+        Triple(AppScreen.Settings, "⚡", "Me")
+    )
+
+    Surface(
         modifier = Modifier.testTag("bottom_nav_bar"),
-        tonalElevation = 8.dp
+        color = BgSurface.copy(alpha = 0.95f),
+        shadowElevation = 16.dp
     ) {
-        NavigationBarItem(
-            selected = currentScreen is AppScreen.Channels || currentScreen is AppScreen.DiscussionRoom,
-            onClick = { onNavigate(AppScreen.Channels) },
-            icon = { Icon(Icons.Default.Home, contentDescription = "Chats") },
-            label = { Text("Chats", fontSize = 11.sp) },
-            colors = NavigationBarItemDefaults.colors(
-                selectedIconColor = MaterialTheme.colorScheme.primary,
-                indicatorColor = MaterialTheme.colorScheme.secondary.copy(alpha = 0.2f)
-            )
-        )
-
-        NavigationBarItem(
-            selected = currentScreen is AppScreen.Calls,
-            onClick = { onNavigate(AppScreen.Calls) },
-            icon = { Icon(Icons.Default.Call, contentDescription = "Calls") },
-            label = { Text("Calls", fontSize = 11.sp) },
-            colors = NavigationBarItemDefaults.colors(
-                selectedIconColor = MaterialTheme.colorScheme.primary,
-                indicatorColor = MaterialTheme.colorScheme.secondary.copy(alpha = 0.2f)
-            )
-        )
-
-        NavigationBarItem(
-            selected = currentScreen is AppScreen.Contacts,
-            onClick = { onNavigate(AppScreen.Contacts) },
-            icon = { Icon(Icons.Default.Person, contentDescription = "Buddies") },
-            label = { Text("Buddies", fontSize = 11.sp) },
-            colors = NavigationBarItemDefaults.colors(
-                selectedIconColor = MaterialTheme.colorScheme.primary,
-                indicatorColor = MaterialTheme.colorScheme.secondary.copy(alpha = 0.2f)
-            )
-        )
-
-        NavigationBarItem(
-            selected = currentScreen is AppScreen.StudyLabs,
-            onClick = { onNavigate(AppScreen.StudyLabs) },
-            icon = { Icon(Icons.Default.Star, contentDescription = "Labs") },
-            label = { Text("Labs", fontSize = 11.sp) },
-            colors = NavigationBarItemDefaults.colors(
-                selectedIconColor = MaterialTheme.colorScheme.primary,
-                indicatorColor = MaterialTheme.colorScheme.secondary.copy(alpha = 0.2f)
-            )
-        )
-
-        NavigationBarItem(
-            selected = currentScreen is AppScreen.Settings,
-            onClick = { onNavigate(AppScreen.Settings) },
-            icon = { Icon(Icons.Default.Settings, contentDescription = "Settings") },
-            label = { Text("Settings", fontSize = 11.sp) },
-            colors = NavigationBarItemDefaults.colors(
-                selectedIconColor = MaterialTheme.colorScheme.primary,
-                indicatorColor = MaterialTheme.colorScheme.secondary.copy(alpha = 0.2f)
-            )
-        )
-    }
-}
-
-// 1. WELCOME / ONBOARDING SCREEN
-@Composable
-// 3. SELECTION ROOM FOR DISCUSSIONS (CHAT ROOM)
-@Composable
-fun RoomScreen(
-    viewModel: StudygramViewModel,
-    channel: SupabaseConversation
-) {
-    val messages = viewModel.activeChannelMessages
-    var inputMessage by remember { mutableStateOf("") }
-    val focusManager = LocalFocusManager.current
-    
-    // Dialog state for AI Revision Helper response
-    var showAiResponseDialog by remember { mutableStateOf(false) }
-
-    Column(
-        modifier = Modifier.fillMaxSize()
-    ) {
-        // App bar
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            tonalElevation = 4.dp,
-            color = MaterialTheme.colorScheme.surface
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(
-                    onClick = { viewModel.navigateTo(AppScreen.Channels) },
-                    modifier = Modifier.testTag("back_button_room")
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "Back to Lobby"
-                    )
-                }
-
-                Spacer(modifier = Modifier.width(4.dp))
-
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = channel.title ?: "Room ${channel.id}",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = "Study group · ${channel.subscriberCount ?: 0} peers",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
-                    )
-                }
-
-                    )
-                }
-            }
-        }
-
-        // Messages board
-        LazyColumn(
+        Row(
             modifier = Modifier
-                .weight(1f)
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp),
-            contentPadding = PaddingValues(top = 12.dp, bottom = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+                .navigationBarsPadding()
+                .padding(horizontal = 4.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly
         ) {
-            items(messages) { msg ->
-                val isMe = msg.senderName == (viewModel.userProfile.value?.username ?: "")
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalAlignment = if (isMe) Alignment.End else Alignment.Start
-                ) {
-                    // Bubble frame
-                    Surface(
-                        color = if (isMe) {
-                            MaterialTheme.colorScheme.primaryContainer
-                        } else {
-                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
-                        },
-                        shape = RoundedCornerShape(
-                            topStart = 12.dp,
-                            topEnd = 12.dp,
-                            bottomStart = if (isMe) 12.dp else 0.dp,
-                            bottomEnd = if (isMe) 0.dp else 12.dp
-                        ),
-                        border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)),
-                        modifier = Modifier
-                            .widthIn(max = 290.dp)
-                            .testTag("message_bubble_${msg.id}")
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(10.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(14.dp)
-                                            .clip(CircleShape)
-                                            .background(Color(msg.avatarColor))
-                                    )
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text(
-                                        text = msg.senderName,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 11.sp,
-                                        color = if (isMe) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                                
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(3.dp))
-                                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.08f))
-                                        .padding(horizontal = 4.dp, vertical = 1.dp)
-                                ) {
-                                    Text(
-                                        text = msg.senderField,
-                                        fontWeight = FontWeight.Medium,
-                                        fontSize = 8.sp,
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
-                                }
-                            }
-                            
-                            Spacer(modifier = Modifier.height(4.dp))
-                            
-                            Text(
-                                text = msg.text,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                fontSize = 13.5.sp
-                            )
-                            
-                            Spacer(modifier = Modifier.height(6.dp))
-
-                            // Interactive shortcuts
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.End,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                // Bookmark trigger
-                                IconButton(
-                                    onClick = { viewModel.toggleMessageBookmark(msg) },
-                                    modifier = Modifier.size(24.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = if (msg.isBookmarked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                                        contentDescription = "Bookmark notes",
-                                        tint = if (msg.isBookmarked) Color.Red else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                }
-                                
-                                Spacer(modifier = Modifier.width(8.dp))
-
-                                // AI Mentor review action
-                                Button(
-                                    onClick = { 
-                                        viewModel.askAiAboutPost(msg)
-                                        showAiResponseDialog = true
-                                    },
-                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
-                                        contentColor = MaterialTheme.colorScheme.primary
-                                    ),
-                                    shape = RoundedCornerShape(6.dp),
-                                    modifier = Modifier.height(22.dp)
-                                ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(
-                                            imageVector = Icons.Default.Face,
-                                            contentDescription = "Ask AI Buddy",
-                                            modifier = Modifier.size(12.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text("Ask AI Tutor", fontSize = 9.sp, fontWeight = FontWeight.Bold)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    val dateFormatted = remember(msg.timestamp) {
-                        // TODO: Implement KMP-friendly datetime formatting in Phase 4
-                        "12:00"
-                    }
-                    Text(
-                        text = dateFormatted,
-                        style = MaterialTheme.typography.bodySmall,
-                        fontSize = 9.sp,
-                        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.4f),
-                        modifier = Modifier.padding(top = 2.dp, start = 4.dp, end = 4.dp)
-                    )
+            tabs.forEach { (screen, emoji, label) ->
+                val selected = when (screen) {
+                    AppScreen.Channels -> currentScreen is AppScreen.Channels
+                    AppScreen.Calls -> currentScreen is AppScreen.Calls
+                    AppScreen.Contacts -> currentScreen is AppScreen.Contacts
+                    AppScreen.StudyLabs -> currentScreen is AppScreen.StudyLabs
+                    AppScreen.Settings -> currentScreen is AppScreen.Settings
+                    else -> false
                 }
-            }
-        }
-
-        // Chat input bar
-        Surface(
-            tonalElevation = 8.dp,
-            modifier = Modifier.fillMaxWidth(),
-            color = MaterialTheme.colorScheme.surface
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                OutlinedTextField(
-                    value = inputMessage,
-                    onValueChange = { inputMessage = it },
-                    placeholder = { Text("Ask group a revision query...", fontSize = 13.5.sp) },
-                    modifier = Modifier
-                        .weight(1f)
-                        .testTag("chat_input_text_field"),
-                    shape = RoundedCornerShape(20.dp),
-                    maxLines = 3,
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                    keyboardActions = KeyboardActions(
-                        onSend = {
-                            if (inputMessage.isNotBlank()) {
-                                viewModel.sendDiscussionMessage(inputMessage)
-                                inputMessage = ""
-                                focusManager.clearFocus()
-                            }
-                        }
-                    )
+                val scale by animateFloatAsState(
+                    targetValue = if (selected) 1.15f else 1f,
+                    animationSpec = spring(dampingRatio = 0.5f, stiffness = 400f),
+                    label = "navScale"
                 )
 
-                Spacer(modifier = Modifier.width(6.dp))
-
-                IconButton(
-                    onClick = {
-                        if (inputMessage.isNotBlank()) {
-                            viewModel.sendDiscussionMessage(inputMessage)
-                            inputMessage = ""
-                            focusManager.clearFocus()
-                        }
-                    },
+                Column(
                     modifier = Modifier
-                        .size(44.dp)
-                        .background(MaterialTheme.colorScheme.primary, CircleShape)
-                        .testTag("send_message_button")
+                        .clip(RoundedCornerShape(16.dp))
+                        .clickable { onNavigate(screen) }
+                        .background(
+                            if (selected) Brush.verticalGradient(
+                                listOf(NeonPurple.copy(0.25f), NeonPink.copy(0.15f))
+                            ) else Brush.verticalGradient(
+                                listOf(Color.Transparent, Color.Transparent)
+                            )
+                        )
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.Send,
-                        contentDescription = "Send",
-                        tint = Color.White,
-                        modifier = Modifier.size(18.dp)
+                    Text(emoji, fontSize = (20 * scale).sp)
+                    Text(
+                        label,
+                        fontSize = 10.sp,
+                        fontWeight = if (selected) FontWeight.Black else FontWeight.Medium,
+                        color = if (selected) NeonCyan else TextMuted
                     )
                 }
             }
         }
-    }
-
-    // AI Mentor tutor bottom dialog response
-    if (showAiResponseDialog) {
-        AiResponseDialog(
-            explanation = viewModel.aiExplanationText,
-            isLoading = viewModel.isGeneratingAI,
-            onDismiss = { showAiResponseDialog = false }
-        )
     }
 }
 
@@ -476,69 +293,29 @@ fun QuizScreen(
             .fillMaxSize()
             .padding(16.dp)
     ) {
-        // Exam header banner
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Column {
-                Text(
-                    text = "UNMC Revision Decks",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary
-                )
-                Text(
-                    text = "Mock National Licensing Exams Prep",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
-                )
-            }
-            
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.08f))
-                    .padding(horizontal = 8.dp, vertical = 4.dp)
-            ) {
-                Text(
-                    text = "UGANDA SYLLABUS",
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary
-                )
-            }
-        }
+        com.example.ui.components.StudygramTopBar(
+            title = "Quiz Blitz",
+            emoji = "🧠",
+            onBack = { viewModel.navigateTo(AppScreen.StudyLabs) }
+        )
+        Text(
+            text = "Crush licensing exams — one question at a time!",
+            color = TextMuted,
+            fontSize = 13.sp,
+            modifier = Modifier.padding(bottom = 12.dp)
+        )
 
-        Spacer(modifier = Modifier.height(12.dp))
-
-        // Subjects tags switcher row
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             subjects.forEach { subject ->
-                val isSelected = viewModel.activeQuizSubject == subject
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(40))
-                        .background(
-                            if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant.copy(
-                                alpha = 0.6f
-                            )
-                        )
-                        .clickable { viewModel.loadQuizQuestions(subject) }
-                        .padding(horizontal = 10.dp, vertical = 6.dp)
-                        .testTag("quiz_subject_$subject")
-                ) {
-                    Text(
-                        text = subject,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
+                com.example.ui.components.NeonPill(
+                    text = subject,
+                    selected = viewModel.activeQuizSubject == subject,
+                    onClick = { viewModel.loadQuizQuestions(subject) },
+                    modifier = Modifier.testTag("quiz_subject_$subject")
+                )
             }
         }
 
@@ -772,269 +549,7 @@ fun QuizScreen(
     }
 }
 
-// 5. DEDICATED PLAYGROUND / AI CHAT BUDDY SCREEN
-@Composable
-fun AIChatPlaygroundScreen(
-    viewModel: StudygramViewModel
-) {
-    val playMessages = viewModel.aiPlaygroundMessages
-    var textPromptInput by remember { mutableStateOf("") }
-    val focusManager = LocalFocusManager.current
-
-    // Preset revision templates that nursing student can click to immediately ask
-    val clinicalPresetPrompts = listOf(
-        "Calculate IV drip rate: 500mL over 6hrs, adult tubing (15 drops/min).",
-        "Explain vaccine intervals of Pentavalent vaccination under UNEPI.",
-        "List 5 critical nursing actions for a mother with postpartum hemorrhage (PPH)."
-    )
-
-    // Ensure we seed starting tutor greetings if empty
-    if (playMessages.isEmpty()) {
-        viewModel.clearAiChat()
-    }
-
-    Column(
-        modifier = Modifier.fillMaxSize()
-    ) {
-        // AI Hub Header
-        Surface(
-            tonalElevation = 4.dp,
-            modifier = Modifier.fillMaxWidth(),
-            color = MaterialTheme.colorScheme.surface
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .size(36.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Face,
-                            contentDescription = "AI Buddy avatar",
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Column {
-                        Text(
-                            text = "Clinical AI Study Buddy",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            text = "Role-playing UNMC Licensure Mentor",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
-                        )
-                    }
-                }
-
-                IconButton(
-                    onClick = { viewModel.clearAiChat() }
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Refresh,
-                        contentDescription = "Reset study canvas chats"
-                    )
-                }
-            }
-        }
-
-        // Main chats view with preset shortcuts
-        LazyColumn(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp),
-            contentPadding = PaddingValues(top = 10.dp, bottom = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            item {
-                Text(
-                    text = "Tap a high-yield study preset, or input your special query:",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
-                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 6.dp)
-                )
-
-                Column(
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                    modifier = Modifier.padding(bottom = 12.dp)
-                ) {
-                    clinicalPresetPrompts.forEach { promptItem ->
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    viewModel.sendAiChatMessage(promptItem)
-                                    focusManager.clearFocus()
-                                },
-                            colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.05f)
-                            ),
-                            shape = RoundedCornerShape(8.dp),
-                            border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 1f))
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(10.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Search,
-                                    contentDescription = "Ask preset query",
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    text = promptItem,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Medium,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-
-            items(playMessages) { chatMessage ->
-                val isCompanion = !chatMessage.isUser
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = if (isCompanion) Arrangement.Start else Arrangement.End
-                ) {
-                    Surface(
-                        color = if (isCompanion) {
-                            MaterialTheme.colorScheme.surfaceVariant
-                        } else {
-                            MaterialTheme.colorScheme.primaryContainer
-                        },
-                        shape = RoundedCornerShape(
-                            topStart = 12.dp,
-                            topEnd = 12.dp,
-                            bottomStart = if (isCompanion) 0.dp else 12.dp,
-                            bottomEnd = if (isCompanion) 12.dp else 0.dp
-                        ),
-                        modifier = Modifier.widthIn(max = 280.dp)
-                    ) {
-                        Column(modifier = Modifier.padding(12.dp)) {
-                            Text(
-                                text = chatMessage.senderName,
-                                style = MaterialTheme.typography.bodySmall,
-                                fontWeight = FontWeight.Bold,
-                                color = if (isCompanion) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onPrimaryContainer,
-                                fontSize = 10.sp
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = chatMessage.text,
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontSize = 13.sp,
-                                lineHeight = 18.sp
-                            )
-                        }
-                    }
-                }
-            }
-
-            if (viewModel.isGeneratingAI) {
-                item {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(8.dp),
-                        horizontalArrangement = Arrangement.Start
-                    ) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(24.dp),
-                            strokeWidth = 2.dp,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "AI Study Companion is formulating reasoning...",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
-                        )
-                    }
-                }
-            }
-        }
-
-        // Floating message keyboard input bar
-        Surface(
-            tonalElevation = 8.dp,
-            modifier = Modifier.fillMaxWidth(),
-            color = MaterialTheme.colorScheme.surface
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillPaddingSafe()
-                    .padding(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                OutlinedTextField(
-                    value = textPromptInput,
-                    onValueChange = { textPromptInput = it },
-                    placeholder = { Text("Ask any clinical drug calculations or nursing topics...") },
-                    modifier = Modifier
-                        .weight(1f)
-                        .testTag("ai_companion_text_field"),
-                    shape = RoundedCornerShape(20.dp),
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                    keyboardActions = KeyboardActions(
-                        onSend = {
-                            if (textPromptInput.isNotBlank()) {
-                                viewModel.sendAiChatMessage(textPromptInput)
-                                textPromptInput = ""
-                                focusManager.clearFocus()
-                            }
-                        }
-                    )
-                )
-
-                Spacer(modifier = Modifier.width(6.dp))
-
-                IconButton(
-                    onClick = {
-                        if (textPromptInput.isNotBlank()) {
-                            viewModel.sendAiChatMessage(textPromptInput)
-                            textPromptInput = ""
-                            focusManager.clearFocus()
-                        }
-                    },
-                    modifier = Modifier
-                        .size(44.dp)
-                        .background(MaterialTheme.colorScheme.primary, CircleShape)
-                        .testTag("ai_companion_send_button")
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.Send,
-                        contentDescription = "Search",
-                        tint = Color.White,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-            }
-        }
-    }
-}
-
-// Helper safely handles bottom paddings
-fun Modifier.fillPaddingSafe() = this.fillMaxWidth()
-
-// 6. BOOKMARKS / STUDY NOTEBOOK MODULE
+// BOOKMARKS / STUDY NOTEBOOK MODULE
 @Composable
 fun BookmarksScreen(
     viewModel: StudygramViewModel
@@ -1046,17 +561,16 @@ fun BookmarksScreen(
             .fillMaxSize()
             .padding(16.dp)
     ) {
-        Text(
-            text = "Offline study Notebook",
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.primary
+        com.example.ui.components.StudygramTopBar(
+            title = "Saved Notes",
+            emoji = "🔖",
+            onBack = { viewModel.navigateTo(AppScreen.Channels) }
         )
         Text(
-            text = "Saved exam MCQs and discussion cards for revision anytime, even without internet access.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
-            modifier = Modifier.padding(top = 4.dp, bottom = 16.dp)
+            text = "Your bookmarked quizzes & chats — study offline anytime!",
+            color = TextMuted,
+            fontSize = 13.sp,
+            modifier = Modifier.padding(bottom = 16.dp)
         )
 
         if (bookmarks.isEmpty()) {

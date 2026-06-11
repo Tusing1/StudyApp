@@ -7,8 +7,10 @@ import kotlinx.coroutines.Dispatchers
 
 actual object DatabaseProvider {
     private var db: AppDatabase? = null
+    private var appContext: Context? = null
     
     fun init(context: Context) {
+        appContext = context.applicationContext
         if (db == null) {
             val dbFile = context.getDatabasePath("studygram_database.db")
             db = Room.databaseBuilder<AppDatabase>(
@@ -24,5 +26,9 @@ actual object DatabaseProvider {
     
     actual fun getDatabase(): AppDatabase {
         return db ?: throw IllegalStateException("DatabaseProvider must be initialized first")
+    }
+
+    fun getContext(): Context {
+        return appContext ?: throw IllegalStateException("DatabaseProvider must be initialized first")
     }
 }

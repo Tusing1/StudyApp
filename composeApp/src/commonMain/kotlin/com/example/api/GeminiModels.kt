@@ -20,7 +20,7 @@ data class GenerateContentRequest(
 
 @Serializable
 data class GenerateContentResponse(
-    val candidates: List<Candidate>?
+    val candidates: List<Candidate>? = null
 )
 
 @Serializable

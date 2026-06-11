@@ -1,11 +1,11 @@
 package com.example.repository
 
-import com.example.api.Content
+import com.example.api.*
 import io.github.jan.supabase.postgrest.query.Columns
 import io.github.jan.supabase.functions.functions
+import io.github.jan.supabase.auth.auth
+import io.ktor.client.call.body
 import kotlinx.serialization.Serializable
-import com.example.api.Part
-import com.example.api.ApiClient
 import com.example.config.GEMINI_API_KEY
 import com.example.data.*
 import kotlinx.coroutines.Dispatchers
@@ -24,7 +24,7 @@ data class CreateConversationRequest(
 
 @Serializable
 data class CreateConversationResponse(
-    val id: Long
+    val id: String
 )
 
 class StudyRepository(
@@ -40,7 +40,22 @@ class StudyRepository(
     val allBookmarks: Flow<List<Bookmark>> = bookmarkDao.getAllBookmarks()
 
     suspend fun saveProfile(username: String, field: String, color: Int) = withContext(Dispatchers.IO) {
-        val user = UserProfile(username = username, nursingField = field, avatarColor = color)
+        val existing = userProfileDao.getUserProfileDirect()
+        val currentSessionJson = existing?.supabaseSessionJson ?: ""
+        val user = UserProfile(
+            username = username,
+            nursingField = field,
+            avatarColor = color,
+            supabaseSessionJson = currentSessionJson.ifEmpty {
+                try {
+                    supabase.auth.currentSessionOrNull()?.let { sess ->
+                        kotlinx.serialization.json.Json.encodeToString(io.github.jan.supabase.auth.user.UserSession.serializer(), sess)
+                    } ?: ""
+                } catch (e: Exception) {
+                    ""
+                }
+            }
+        )
         userProfileDao.insertProfile(user)
     }
 
@@ -50,6 +65,22 @@ class StudyRepository(
 
     suspend fun addStudyTokens(amount: Int) = withContext(Dispatchers.IO) {
         userProfileDao.addStudyTokens(amount)
+    }
+
+    suspend fun updateGeminiApiKey(key: String) = withContext(Dispatchers.IO) {
+        userProfileDao.updateGeminiApiKey(key)
+    }
+
+    suspend fun updateNotificationsEnabled(enabled: Boolean) = withContext(Dispatchers.IO) {
+        userProfileDao.updateNotificationsEnabled(enabled)
+    }
+
+    suspend fun updateProfileDetails(username: String, field: String, color: Int) = withContext(Dispatchers.IO) {
+        userProfileDao.updateProfileDetails(username, field, color)
+    }
+
+    suspend fun updateSupabaseSessionJson(json: String) = withContext(Dispatchers.IO) {
+        userProfileDao.updateSupabaseSessionJson(json)
     }
 
     suspend fun initDatabaseIfNeeded() = withContext(Dispatchers.IO) {
@@ -110,7 +141,7 @@ class StudyRepository(
         bookmarkDao.insertBookmark(bookmark)
     }
 
-    suspend fun createGroup(name: String, description: String, memberIds: List<String>): Long? {
+    suspend fun createGroup(name: String, description: String, memberIds: List<String>): String? {
         return try {
             val response = supabase.functions.invoke("create-conversation", CreateConversationRequest(
                 type = "group",
@@ -125,7 +156,7 @@ class StudyRepository(
         }
     }
 
-    suspend fun createChannel(name: String, description: String, enableDiscussion: Boolean): Long? {
+    suspend fun createChannel(name: String, description: String, enableDiscussion: Boolean): String? {
         return try {
             val response = supabase.functions.invoke("create-conversation", CreateConversationRequest(
                 type = "channel",
@@ -150,9 +181,12 @@ class StudyRepository(
 
     suspend fun askGemini(prompt: String, systemPrompt: String? = null): String = withContext(Dispatchers.IO) {
         // Safe check for the Gemini API key
-        val apiKey = GEMINI_API_KEY
+        val localProfile = userProfileDao.getUserProfile().firstOrNull()
+        val customKey = localProfile?.geminiApiKey ?: ""
+        val apiKey = if (customKey.isNotEmpty() && customKey != "MY_GEMINI_API_KEY") customKey else GEMINI_API_KEY
+
         if (apiKey.isEmpty() || apiKey == "MY_GEMINI_API_KEY" || apiKey.contains("placeholder", ignoreCase = true)) {
-            return@withContext "API Configuration Notice: Gemini API Key is missing. To activate real-time clinical grading and AI tutor explanations, please add your Google Gemini API Key into the Secrets panel in the AI Studio sidebar."
+            return@withContext "API Configuration Notice: Gemini API Key is missing. To activate real-time clinical grading and AI tutor explanations, please add your Google Gemini API Key into the Settings panel."
         }
 
         try {

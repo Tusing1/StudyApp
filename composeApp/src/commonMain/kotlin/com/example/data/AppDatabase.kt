@@ -10,7 +10,7 @@ import androidx.room.RoomDatabase
         QuizQuestion::class,
         Bookmark::class
     ],
-    version = 1,
+    version = 3,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
